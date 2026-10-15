@@ -34,8 +34,18 @@ class TradeRoute(BaseModel):
     exporter: str = Field(description="Country id sending the goods")
     importer: str = Field(description="Country id receiving the goods")
     resource: str
-    volume: int = Field(gt=0, description="Trade volume index")
+    volume: int = Field(
+        ge=0,
+        description="CURRENT trade volume index = base_volume * efficiency / 100 (0 while the route is inactive)",
+    )
     active: bool = True
+    base_volume: int = Field(gt=0, description="Normal (100% efficiency) trade volume index; never changes")
+    efficiency: int = Field(
+        default=100,
+        ge=0,
+        le=150,
+        description="Percent of base_volume actually flowing: 100 = normal, >100 boosted (alliance), 0 = cut off (sanction)",
+    )
 
 
 class DiplomacyEvent(BaseModel):

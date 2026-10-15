@@ -4,7 +4,7 @@
 through `_execute`, which:
 
   1. copies the world,
-  2. runs a rule from rules.py on the copy,
+  2. runs a rule from rules.py on the copy, then recalculates trade state,
   3. checks the copy is still consistent,
   4. records a DiplomacyEvent, and only then
   5. swaps the copy in as the real world.
@@ -25,6 +25,7 @@ from rules import (
     apply_alliance,
     apply_sanction,
     find_country,
+    recalculate_trade_effects,
     validate_world,
 )
 
@@ -73,6 +74,7 @@ class Simulation:
         with self._lock:
             draft = self._world.model_copy(deep=True)
             result = rule(draft)  # raises ActionError on invalid actions
+            recalculate_trade_effects(draft)  # idempotent safety net: routes + trade_partners stay in sync
 
             problems = validate_world(draft)
             if problems:  # a rule bug must never corrupt the real world

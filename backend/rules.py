@@ -37,7 +37,12 @@ SANCTION_RELATIONSHIP_DROP = 25      # applied to both directions of the pair
 # --- Alliance tuning ---------------------------------------------------------
 ALLIANCE_RELATIONSHIP_GAIN = 20      # applied to both directions of the pair
 ALLIANCE_STABILITY_GAIN = 2          # each ally
-ALLIANCE_TRADE_BOOST_RATE = 0.10     # +10% volume on active routes between allies
+# --- Trade tuning --------------------------------------------------------------
+# A route's current volume is always base_volume * efficiency / 100.
+TRADE_EFFICIENCY_BASELINE = 100      # normal, unsanctioned trade
+TRADE_EFFICIENCY_CUT = 0             # sanctioned: route inactive, nothing flows
+TRADE_EFFICIENCY_MAX = 150           # hard ceiling for any boost
+ALLIANCE_TRADE_EFFICIENCY = 110      # direct routes between new allies run at 110% (a SET, never stacked)
 
 # --- Aid tuning --------------------------------------------------------------
 MIN_AID_AMOUNT = 1.0                 # billions of fictional dollars
@@ -158,6 +163,75 @@ def refresh_trade_partners(world: "WorldState") -> None:
         c.trade_partners = sorted(partners[c.id])
 
 
+# --- Trade ---------------------------------------------------------------------
+def effective_volume(base_volume: int, efficiency: int) -> int:
+    """Current volume of a route: 0 when cut off, otherwise at least 1."""
+    if efficiency <= 0:
+        return 0
+    return max(1, round(base_volume * efficiency / 100))
+
+
+def pair_is_sanctioned(world: "WorldState", a_id: str, b_id: str) -> bool:
+    """True if either country sanctions the other (trade is cut in both directions)."""
+    a, b = find_country(world, a_id), find_country(world, b_id)
+    if a is None or b is None:
+        return False
+    return a.id in b.sanctions or b.id in a.sanctions
+
+
+def _route_state(route) -> dict[str, Any]:
+    return {"active": route.active, "efficiency": route.efficiency, "volume": route.volume}
+
+
+def boost_routes_between(world: "WorldState", a_id: str, b_id: str) -> list[str]:
+    """Raise efficiency of the ACTIVE direct routes between two countries.
+
+    The boost is a floor (`max`), not an addition, so applying it again to the
+    same pair can never stack. Call `recalculate_trade_effects` afterwards.
+    """
+    boosted = []
+    for route in _routes_between(world, a_id, b_id):
+        if route.active and route.efficiency < ALLIANCE_TRADE_EFFICIENCY:
+            route.efficiency = ALLIANCE_TRADE_EFFICIENCY
+            boosted.append(route.id)
+    return boosted
+
+
+def recalculate_trade_effects(world: "WorldState") -> dict[str, dict[str, Any]]:
+    """Bring every trade route and every trade_partners list back in line with the world.
+
+    For each route:
+      * if either country sanctions the other -> inactive, efficiency 0, volume 0
+      * otherwise -> active (a route that was cut but is no longer sanctioned is
+        restored to baseline efficiency); efficiency is kept within sane bounds
+      * volume is always recomputed as base_volume * efficiency / 100
+    Then trade_partners is rebuilt from the active routes.
+
+    Idempotent: running it twice gives the same result as running it once.
+    Returns {route_id: {"before": state, "after": state}} for routes that changed.
+    """
+    changes: dict[str, dict[str, Any]] = {}
+    for route in world.trade_routes:
+        before = _route_state(route)
+
+        if pair_is_sanctioned(world, route.exporter, route.importer):
+            route.active = False
+            route.efficiency = TRADE_EFFICIENCY_CUT
+        else:
+            if not route.active or route.efficiency <= 0:
+                route.active = True
+                route.efficiency = TRADE_EFFICIENCY_BASELINE
+            route.efficiency = clamp(route.efficiency, 1, TRADE_EFFICIENCY_MAX)
+        route.volume = effective_volume(route.base_volume, route.efficiency)
+
+        after = _route_state(route)
+        if after != before:
+            changes[route.id] = {"before": before, "after": after}
+
+    refresh_trade_partners(world)
+    return changes
+
+
 # --- Actions ---------------------------------------------------------------------
 def apply_sanction(world: "WorldState", actor_id: str, target_id: str) -> ActionResult:
     actor, target = validate_parties(world, actor_id, target_id)
@@ -171,13 +245,10 @@ def apply_sanction(world: "WorldState", actor_id: str, target_id: str) -> Action
     target.stability = clamp_stability(target.stability - SANCTION_STABILITY_LOSS)
     relationship = _change_relationship(actor, target, -SANCTION_RELATIONSHIP_DROP)
 
-    # Trade between the two countries is cut off (both directions).
-    cut_routes = []
-    for route in _routes_between(world, actor.id, target.id):
-        if route.active:
-            route.active = False
-            cut_routes.append(route.id)
-    refresh_trade_partners(world)
+    # Trade between the two countries is cut off (both directions). The sanction
+    # is already recorded above, so recalculation does the rest.
+    trade_changes = recalculate_trade_effects(world)
+    cut_routes = sorted(rid for rid, ch in trade_changes.items() if not ch["after"]["active"])
 
     return ActionResult(
         type="sanction",
@@ -191,6 +262,7 @@ def apply_sanction(world: "WorldState", actor_id: str, target_id: str) -> Action
             "target_stability": {"before": stability_before, "after": target.stability},
             "relationship": relationship,
             "trade_routes_deactivated": cut_routes,
+            "trade_routes": trade_changes,
         },
     )
 
@@ -216,12 +288,13 @@ def apply_alliance(world: "WorldState", actor_id: str, target_id: str) -> Action
     target.stability = clamp_stability(target.stability + ALLIANCE_STABILITY_GAIN)
     relationship = _change_relationship(actor, target, ALLIANCE_RELATIONSHIP_GAIN)
 
-    boosted = {}
-    for route in _routes_between(world, actor.id, target.id):
-        if route.active:
-            old = route.volume
-            route.volume = old + max(1, round(old * ALLIANCE_TRADE_BOOST_RATE))
-            boosted[route.id] = {"before": old, "after": route.volume}
+    # Direct routes between the new allies run at the alliance efficiency.
+    boost_routes_between(world, actor.id, target.id)
+    trade_changes = recalculate_trade_effects(world)
+    boosted = {
+        rid: {"before": ch["before"]["volume"], "after": ch["after"]["volume"]}
+        for rid, ch in trade_changes.items()
+    }
 
     return ActionResult(
         type="alliance",
@@ -234,6 +307,7 @@ def apply_alliance(world: "WorldState", actor_id: str, target_id: str) -> Action
             },
             "relationship": relationship,
             "trade_routes_boosted": boosted,
+            "trade_routes": trade_changes,
         },
     )
 
@@ -310,5 +384,20 @@ def validate_world(world: "WorldState") -> list[str]:
             problems.append(f"trade route {r.id}: unknown country")
         if r.exporter == r.importer:
             problems.append(f"trade route {r.id}: exporter and importer are the same")
+        if r.base_volume <= 0:
+            problems.append(f"trade route {r.id}: base_volume {r.base_volume} must be positive")
+        if r.volume < 0:
+            problems.append(f"trade route {r.id}: negative volume")
+        if not 0 <= r.efficiency <= TRADE_EFFICIENCY_MAX:
+            problems.append(f"trade route {r.id}: efficiency {r.efficiency} out of range")
+        elif r.volume != effective_volume(r.base_volume, r.efficiency):
+            problems.append(f"trade route {r.id}: volume does not match base_volume * efficiency")
+        if r.active and r.efficiency == 0:
+            problems.append(f"trade route {r.id}: active route has zero efficiency")
+        if not r.active and (r.efficiency != 0 or r.volume != 0):
+            problems.append(f"trade route {r.id}: inactive route still has trade flowing")
+        if r.exporter in ids and r.importer in ids:
+            if r.active == pair_is_sanctioned(world, r.exporter, r.importer):
+                problems.append(f"trade route {r.id}: active flag disagrees with sanctions")
 
     return problems

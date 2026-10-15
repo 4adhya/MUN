@@ -90,6 +90,7 @@ def build_trade_routes() -> list[TradeRoute]:
             importer=importer,
             resource=resource,
             volume=volume,
+            base_volume=volume,  # normal trade level; efficiency starts at 100%
         )
         for i, (exporter, importer, resource, volume) in enumerate(_RAW_TRADE_ROUTES, start=1)
     ]
