@@ -2,9 +2,8 @@
 
 FastAPI service holding the in-memory simulation state for 10 fictional countries.
 No database, no AI. Players can sanction, ally and send aid; every action is logged as a diplomacy event.
-Trade routes react to sanctions and alliances (see "Trade model").
 
-## Run
+## Quick start
 
 ```bash
 cd backend
@@ -13,75 +12,195 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-> Note: the command is `uvicorn main:app --reload` (`module:attribute`).
-> `uvicorn main --reload` fails with "Import string must be in format <module>:<attribute>".
+> The command is `uvicorn main:app --reload` (`module:attribute`); `uvicorn main --reload` fails.
 
-Server: http://127.0.0.1:8000  ·  Interactive docs: http://127.0.0.1:8000/docs
+| | |
+|---|---|
+| Backend base URL | `http://127.0.0.1:8000` |
+| Frontend connects to | `http://127.0.0.1:8000` (e.g. `VITE_API_URL=http://127.0.0.1:8000`) |
+| Swagger UI / OpenAPI | `http://127.0.0.1:8000/docs` · `http://127.0.0.1:8000/openapi.json` |
+| Allowed browser origins | `http://localhost:5173`, `http://127.0.0.1:5173` (Vite), `:3000` (same hosts) |
 
-CORS allows `http://localhost:5173` and `http://127.0.0.1:5173` (Vite) plus port 3000.
+CORS is an explicit allow-list, not `*`. For a deployed frontend set `CORS_ORIGINS` to a comma-separated list
+(this replaces the defaults): `CORS_ORIGINS=https://my-app.vercel.app,http://localhost:5173 uvicorn main:app`
 
-## Endpoints
+State lives in memory: restarting the server or calling `POST /simulation/reset` returns the same starting world.
 
-| Method | Path                     | Description                                   |
-|--------|--------------------------|-----------------------------------------------|
-| GET    | `/health`                | `{"status": "ok"}`                            |
-| GET    | `/world`                 | Full state: turn, countries, trade routes (current values), events |
-| GET    | `/countries/{country_id}`| One country (404 if unknown), e.g. `/countries/aurelia` |
-| POST   | `/actions/sanction`      | `{"actor","target"}`: target loses GDP/stability, relationship drops, trade between the pair is cut |
-| POST   | `/actions/alliance`      | `{"actor","target"}`: both record the alliance, relationship and stability rise, trade between them grows |
-| POST   | `/actions/aid`           | `{"actor","target","amount"}`: target gains stability and GDP, actor GDP dips, relationship improves |
-| GET    | `/events`                | Recent diplomacy events, newest first (`?limit=1..100`, default 20) |
-| POST   | `/simulation/reset`      | Restore the original starting world and clear all events |
+## API contract
 
-Errors: `404` unknown country, `409` duplicate sanction/alliance (or alliance while sanctioned),
-`400` actor == target or invalid aid amount, `422` malformed request. A failed action never changes the world.
+All bodies are JSON. Country ids are lowercase slugs (`aurelia, brevania, caldoria, dravenia, eldoria, fyrnia, garvonia, helvaris, istoria, jorvania`);
+action requests trim and lower-case ids, so `" Aurelia "` works. Unknown extra fields in action bodies are rejected (422).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET  | `/health` | `{"status": "ok"}` |
+| GET  | `/world` | Full state: turn, countries, trade routes, event history |
+| GET  | `/countries/{country_id}` | One country (same shape as in `/world`) |
+| POST | `/actions/sanction` | Actor sanctions target |
+| POST | `/actions/alliance` | Actor and target form an alliance |
+| POST | `/actions/aid` | Actor sends aid to target |
+| GET  | `/events?limit=20` | Diplomacy feed, newest first (`limit` 1-100) |
+| POST | `/simulation/reset` | Restore the starting world, clear events |
+
+### GET /world
+
+Returns everything needed to render the map. `events` is the full history, **oldest first** (use `/events` for a newest-first feed).
+
+```json
+{
+  "turn": 0,
+  "countries": [
+    {
+      "id": "eldoria", "name": "Eldoria", "gdp": 520.0, "stability": 68,
+      "resources": {"food": 70, "oil": 35, "tech": 30},
+      "trade_partners": ["caldoria", "helvaris"],
+      "alliances": ["Meridian Pact"],
+      "sanctions": [],
+      "relationships": {"aurelia": 0, "caldoria": 43, "istoria": -25, "...": 0}
+    }
+  ],
+  "trade_routes": [
+    {"id": "route-04", "exporter": "caldoria", "importer": "eldoria", "resource": "oil",
+     "volume": 35, "active": true, "base_volume": 35, "efficiency": 100}
+  ],
+  "events": []
+}
+```
+
+- `gdp`: billions of fictional dollars. `stability`: 0-100. `resources`: stockpile index 0-100.
+- `relationships[other_id]`: -100 (hostile) to 100 (friendly), symmetric, one entry per other country.
+- `sanctions`: ids of countries that currently sanction THIS country. `trade_partners`: derived from ACTIVE routes.
+- Trade route: `volume` is the CURRENT flow = `base_volume * efficiency / 100`. `efficiency` 100 = normal, 110 = allied, 0 = cut off.
+  `active` is `false` while either country sanctions the other (then `volume` is 0).
+
+### GET /countries/{country_id}
+
+`GET /countries/eldoria` returns the single country object shown above (identical to its entry in `/world`).
+Case-insensitive. Unknown id: `404 {"detail": "Country 'atlantis' not found"}`.
+
+### POST /actions/sanction
+
+```json
+{"actor": "caldoria", "target": "eldoria"}
+```
+
+Target loses 3% GDP and 5 stability, relationship drops 25 (both directions), the actor is added to `target.sanctions`,
+and every direct route between the two (both directions) becomes inactive with volume 0.
+Rejected with 409 if the actor already sanctions the target (the opposite direction is a separate sanction).
+
+### POST /actions/alliance
+
+```json
+{"actor": "garvonia", "target": "fyrnia"}
+```
+
+Creates a named alliance (`"Fyrnia-Garvonia Alliance"`, ids sorted) recorded on both countries; relationship +20, stability +2 each;
+active direct routes between them run at efficiency 110. Rejected with 409 if they already share any alliance
+(including a bloc such as the Northern Accord) or if either sanctions the other.
+
+### POST /actions/aid
+
+```json
+{"actor": "aurelia", "target": "istoria", "amount": 100}
+```
+
+`amount` is 1-500 and at most 10% of the actor's GDP. Target gains 40% of the amount as GDP plus stability (+1 to +5);
+actor loses 20% of the amount in GDP; relationship +1 to +15.
+
+**Every action returns the same shape** (the updated countries, so the UI can refresh without a second call):
+
+```json
+{
+  "event":  { "...see below..." },
+  "actor":  { "...country after the action..." },
+  "target": { "...country after the action..." }
+}
+```
+
+A failed action never changes the world.
+
+### GET /events
+
+A plain JSON array, newest first. Each event:
+
+```json
+{
+  "id": 1, "turn": 0, "type": "sanction", "actor": "caldoria", "target": "eldoria",
+  "message": "Caldoria imposed sanctions on Eldoria. Eldoria's economy and stability took a hit, and 2 trade route(s) were suspended.",
+  "timestamp": "2026-10-16T04:50:50.994783Z",
+  "effects": {
+    "target_gdp": {"before": 520.0, "after": 504.4},
+    "target_stability": {"before": 68, "after": 63},
+    "relationship": 18,
+    "trade_routes_deactivated": ["route-04", "route-05"],
+    "trade_routes": {"route-04": {"before": {"active": true, "efficiency": 100, "volume": 35},
+                                  "after":  {"active": false, "efficiency": 0, "volume": 0}}}
+  }
+}
+```
+
+`type` is `sanction`, `alliance` or `aid`. `id` is sequential from 1 after every reset. `timestamp` is UTC ISO-8601.
+Render `message`; `effects` is optional detail and its keys differ per `type`.
+
+### POST /simulation/reset
+
+No body. Restores countries, relationships, alliances, sanctions and trade routes, clears events, and returns the fresh world
+(same shape as `GET /world`).
+
+### For the AI layer (Person 3)
+
+No AI-specific endpoints: an agent uses the same API as the frontend. Observe with `GET /world` and `GET /countries/{id}`,
+remember with `GET /events`, act with the three `POST /actions/*` endpoints. Treat a 4xx as "that move is not legal right now"
+(the `detail` text says why) and pick another.
+
+## Errors
+
+| Status | When | Body |
+|--------|------|------|
+| 400 | actor == target, or invalid aid amount (<1, >500, or >10% of actor GDP) | `{"detail": "text"}` |
+| 404 | unknown country id (path or body); unknown route | `{"detail": "text"}` |
+| 405 | wrong HTTP method | `{"detail": "Method Not Allowed"}` |
+| 409 | duplicate sanction/alliance, or alliance while sanctioned | `{"detail": "text"}` |
+| 422 | malformed body/query (missing field, wrong type, bad JSON, NaN/Infinity, `limit` out of 1-100) | `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}` |
+| 500 | unexpected bug; details only in the server log | `{"detail": "Internal server error"}` |
+
+Note `detail` is a string for every error except 422, where it is a list.
+
+## Tests
+
+```bash
+cd backend
+pip install pytest
+python -m pytest -q          # all 76 tests
+```
+
+| File | Covers |
+|------|--------|
+| `test_smoke.py` | health, world shape, country lookup, consistency, CORS |
+| `test_actions.py` | sanction / alliance / aid rules, errors, events, reset |
+| `test_trade.py` | trade-route economy (sanction cuts, alliance boosts, no stacking, never negative) |
+| `test_api_contract.py` | the HTTP contract above: shapes, status codes, CORS, `/docs`, `/openapi.json`, frontend and AI workflows |
+| `conftest.py` | resets the world before every test |
 
 ## Trade model
 
-Each route in `trade_routes` has:
+Each route has `base_volume` (normal level, never changes), `efficiency` (percent flowing, 0-150) and `volume`
+(= `base_volume * efficiency / 100`). Rules live in `rules.py`:
 
-| Field         | Meaning |
-|---------------|---------|
-| `id`, `exporter`, `importer`, `resource` | unchanged |
-| `base_volume` | the route's normal trade level. Never changes. |
-| `efficiency`  | percent of the base level actually flowing: `100` normal, `110` allied, `0` cut off (max `150`) |
-| `volume`      | CURRENT volume = `base_volume * efficiency / 100` (so `0` while cut off) |
-| `active`      | `false` when either country sanctions the other |
-
-Rules (all in `rules.py`):
-
-- **Normal trade:** active, efficiency 100, volume == base_volume.
-- **Sanction (A on B):** every direct route between A and B, in both directions, becomes inactive with efficiency 0 and volume 0.
-  Other routes are untouched. `trade_partners` drops the pair.
-- **Alliance (A with B):** every active direct route between A and B is set to efficiency 110. It is a floor, not an addition,
-  so it can never stack. No routes are created.
-- **`recalculate_trade_effects(world)`:** rebuilds route state and `trade_partners` from the sanctions in the world.
-  Idempotent. `simulation.py` runs it after every action as a safety net. A cut route whose sanction no longer exists is
-  restored to efficiency 100 (ready for a future "lift sanction").
-- `validate_world` checks volume >= 0, efficiency 0-150, volume == base * efficiency, active flag vs sanctions,
-  and `trade_partners` vs active routes.
+- **Normal:** active, efficiency 100, volume == base_volume.
+- **Sanction:** direct routes between the pair become inactive, efficiency 0, volume 0. Other routes are untouched.
+- **Alliance:** active direct routes are set to efficiency 110 (a floor, never added), so it cannot stack. No routes are created.
+- `recalculate_trade_effects(world)` rebuilds route state and `trade_partners` from the sanctions in the world. It is idempotent and
+  `simulation.py` runs it after every action. `validate_world` checks the result.
 
 ## Files
 
-| File            | Purpose                                                        |
-|-----------------|----------------------------------------------------------------|
-| `main.py`       | FastAPI app, CORS, routes (no business logic)                  |
-| `models.py`     | Pydantic models: Country, TradeRoute, DiplomacyEvent, request/response models, WorldState |
-| `countries.py`  | Hard-coded countries, alliances, trade routes, starting relationships |
+| File | Purpose |
+|------|---------|
+| `main.py` | FastAPI app, CORS, error handlers, routes (no business logic) |
+| `models.py` | Pydantic models: Country, TradeRoute, DiplomacyEvent, request/response models, WorldState |
+| `countries.py` | Hard-coded countries, alliances, trade routes, starting relationships |
 | `simulation.py` | `Simulation`: owns the `WorldState`, runs actions atomically, event history, reset |
-| `rules.py`      | Tuning constants, `apply_sanction/alliance/aid`, trade recalculation, errors, `validate_world` |
-| `test_smoke.py` | Smoke tests: `python test_smoke.py` (or `pytest`)              |
-| `test_actions.py` | Action/event/reset tests: `python test_actions.py` (or `pytest`) |
-| `test_trade.py` | Trade-route tests: `python test_trade.py` (or `pytest`)        |
-| `conftest.py`   | pytest fixture that resets the world before every test         |
+| `rules.py` | Tuning constants, `apply_sanction/alliance/aid`, trade recalculation, errors, `validate_world` |
 
-## Data conventions
-
-- Countries: `aurelia, brevania, caldoria, dravenia, eldoria, fyrnia, garvonia, helvaris, istoria, jorvania`
-- `gdp`: billions of fictional dollars. `stability`: 0-100. `resources`: stockpile index 0-100.
-- `relationships[other_id]`: -100 (hostile) to 100 (friendly). Symmetric at the start.
-- `sanctions`: ids of countries that currently sanction THIS country (empty at start).
-- `trade_partners` is derived from ACTIVE `trade_routes`, so they always agree.
-- Initial relationships are computed deterministically: +25 per shared alliance,
-  +3 per 10 trade volume between the pair, plus hand-tuned grudges/friendships.
-- Everything is deterministic: restarting the server always gives the same world.
+Everything is deterministic: restarting the server always gives the same world.

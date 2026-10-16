@@ -110,6 +110,12 @@ class AidRequest(_CountryPairRequest):
         return value
 
 
+class ErrorResponse(BaseModel):
+    """Body of every rejected request except 422 (see README: 'Errors')."""
+
+    detail: str = Field(description="Human-readable reason the request was rejected")
+
+
 class ActionResponse(BaseModel):
     """Returned by every successful action endpoint."""
 
