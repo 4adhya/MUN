@@ -1,0 +1,2 @@
+# Gemini access for the AI layer (Person 3). Official Google GenAI SDK, nothing else.
+google-genai>=1.0,<3
