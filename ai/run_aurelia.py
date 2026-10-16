@@ -5,8 +5,13 @@ Run from the repo root:
     python ai/run_aurelia.py "Garvonia imposed sanctions on us."
     python ai/run_aurelia.py --show-prompt "Caldoria blocked our trade route."
 
-Uses the backend's starting world in-process. It does NOT start the API and does NOT execute any action.
-Exit codes: 0 valid proposal | 1 no valid proposal (Gemini error or unusable reply)
+Uses the backend's starting world in-process. It does NOT start the API and does NOT execute any action:
+the output is a validated proposal only.
+
+Exit codes:
+    0  Gemini answered with a valid decision
+    1  the call to Gemini failed (missing key, quota, network, 503...)  -> error_code "gemini_error"
+    2  Gemini answered, but the answer is not a valid decision          -> error_code "invalid_response"
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ from country_agent import AureliaAgent  # noqa: E402
 from simulation import create_initial_world  # noqa: E402
 
 DEFAULT_SITUATION = "Caldoria blocked our trade route."
+EXIT_OK, EXIT_GEMINI_ERROR, EXIT_INVALID_RESPONSE = 0, 1, 2
 
 
 def main() -> int:
@@ -37,8 +43,21 @@ def main() -> int:
         print("\n--- USER PROMPT ---\n" + agent.build_user_prompt(args.situation, world) + "\n")
 
     result = agent.propose(args.situation, world)
-    print(json.dumps(result.model_dump(mode="json"), indent=2))
-    return 0 if result.ok else 1
+
+    if result.ok:
+        print("VALIDATED DECISION (a proposal only; nothing was executed):")
+        print(json.dumps(result.decision.model_dump(mode="json"), indent=2))
+        return EXIT_OK
+
+    if result.error_code == "invalid_response":
+        print("INVALID RESPONSE: Gemini answered, but the answer is not a valid decision.")
+        print(f"  reason: {result.error}")
+        print(f"  raw reply: {result.raw_response!r}")
+        return EXIT_INVALID_RESPONSE
+
+    print("GEMINI ERROR: the call to Gemini failed.")
+    print(f"  {result.error}")
+    return EXIT_GEMINI_ERROR
 
 
 if __name__ == "__main__":

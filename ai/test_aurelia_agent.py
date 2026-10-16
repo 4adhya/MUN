@@ -76,6 +76,7 @@ def test_briefing_uses_real_simulation_state(world):
     aurelia = next(c for c in world.countries if c.id == "aurelia")
     assert f"GDP: {aurelia.gdp:g}" in text and f"Stability: {aurelia.stability}/100" in text
     assert "tech 85" in text and "Northern Accord" in text
+    assert "(id:" not in text  # countries are listed by name only: the agent must answer with names
     assert "Brevania, Caldoria, Istoria" in text  # trade partners
     assert "Caldoria -> Aurelia: oil, volume 50" in text  # a route affecting Aurelia
     for other in world.countries:
@@ -145,6 +146,7 @@ def test_valid_response_is_accepted(world):
     assert d.decision is Decision.SANCTION
     assert d.target == "Caldoria" and d.target_id == "caldoria"
     assert d.reason
+    assert set(d.model_dump()) == {"country", "situation", "decision", "target", "reason"}  # exactly five fields
 
 
 @pytest.mark.parametrize("decision", ["SANCTION", "ALLIANCE", "AID", "NO_ACTION"])
@@ -154,68 +156,7 @@ def test_every_allowed_decision_is_accepted(world, decision):
     assert result.ok and result.decision.decision.value == decision
 
 
-@pytest.mark.parametrize(
-    "overrides, expected_target_id",
-    [
-        ({"decision": "alliance", "target": "caldoria"}, "caldoria"),  # lower-case decision and id
-        ({"decision": " Aid ", "target": " CALDORIA "}, "caldoria"),
-        ({"decision": "NO ACTION", "target": "none"}, None),
-        ({"decision": "NO_ACTION", "target": ""}, None),
-        ({"decision": "NO_ACTION", "target": None}, None),
-        ({"decision": "NO_ACTION", "target": ...}, None),  # key omitted
-        ({"target_id": "garvonia"}, "caldoria"),  # a target_id from the model is never trusted
-        ({"extra_field": "ignored"}, "caldoria"),
-    ],
-)
-def test_harmless_variations_are_normalised(world, overrides, expected_target_id):
-    result = AureliaAgent(llm=FakeLLM(reply(**overrides))).propose(SITUATION, world)
-    assert result.ok, result.error
-    assert result.decision.target_id == expected_target_id
-
-
-def test_json_wrapped_in_a_code_fence_is_accepted(world):
-    fenced = "```json\n" + reply() + "\n```"
-    assert AureliaAgent(llm=FakeLLM(fenced)).propose(SITUATION, world).ok
-
-
-# --- 6. invalid / malformed output is rejected safely -------------------------------------------------
-BAD_REPLIES = {
-    "empty": "",
-    "whitespace": "   \n ",
-    "not json": "I think Aurelia should sanction Caldoria.",
-    "truncated json": '{"country": "Aurelia", "decision": "SANC',
-    "prose around json": "Sure! Here you go: " + reply(),
-    "json list": "[]",
-    "json string": '"SANCTION"',
-    "json null": "null",
-    "missing decision": reply(decision=...),
-    "missing reason": reply(reason=...),
-    "missing situation": reply(situation=...),
-    "missing country": reply(country=...),
-    "blank reason": reply(reason="   "),
-    "invalid decision": reply(decision="NUKE"),
-    "numeric decision": reply(decision=5),
-    "null decision": reply(decision=None),
-    "sanction without target": reply(target=None),
-    "unknown target": reply(target="Atlantis"),
-    "numeric target": reply(target=7),
-    "self target": reply(target="Aurelia"),
-    "no_action with target": reply(decision="NO_ACTION", target="Caldoria"),
-    "wrong country": reply(country="Caldoria"),
-    "reason too long": reply(reason="x" * 1001),
-}
-
-
-@pytest.mark.parametrize("raw", list(BAD_REPLIES.values()), ids=list(BAD_REPLIES))
-def test_bad_replies_are_rejected_without_raising(world, raw):
-    result = AureliaAgent(llm=FakeLLM(raw)).propose(SITUATION, world)
-    assert result.ok is False
-    assert result.decision is None
-    assert result.error_code == "invalid_response"
-    assert result.error
-    assert len(result.raw_response) <= 500
-
-
+# --- 6. invalid / malformed output (the full strict matrix lives in test_country_decision.py) ---------------
 def test_non_string_reply_is_rejected(world):
     for raw in (None, 42, {"decision": "SANCTION"}):
         result = AureliaAgent(llm=FakeLLM(raw)).propose(SITUATION, world)
