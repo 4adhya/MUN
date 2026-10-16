@@ -7,10 +7,10 @@ import random
 import pytest
 from fastapi.testclient import TestClient
 
-import simulation as sim_module
-from main import app
-from rules import ActionResult, ConflictError, find_country, validate_world
-from simulation import create_initial_world, simulation
+import backend.simulation as sim_module
+from backend.main import app
+from backend.rules import ActionResult, ConflictError, find_country, validate_world
+from backend.simulation import create_initial_world, simulation
 
 client = TestClient(app)
 safe_client = TestClient(app, raise_server_exceptions=False)  # returns 500s instead of raising

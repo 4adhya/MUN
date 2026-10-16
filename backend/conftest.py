@@ -1,7 +1,7 @@
 """pytest setup: every test starts from the original world."""
 import pytest
 
-from simulation import simulation
+from backend.simulation import simulation
 
 
 @pytest.fixture(autouse=True)

@@ -12,7 +12,7 @@ import pytest
 
 from check_gemini import CheckError
 from country_agent import AURELIA_PROFILE, AureliaAgent, Decision, build_briefing, parse_decision, ResponseError
-from simulation import Simulation, create_initial_world
+from backend.simulation import Simulation, create_initial_world
 
 SITUATION = "Caldoria blocked our trade route."
 

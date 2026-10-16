@@ -4,9 +4,9 @@ Run from backend/:  python test_actions.py   (or: pytest)
 """
 from fastapi.testclient import TestClient
 
-from main import app
-from rules import validate_world
-from simulation import create_initial_world, simulation
+from backend.main import app
+from backend.rules import validate_world
+from backend.simulation import create_initial_world, simulation
 
 client = TestClient(app)
 

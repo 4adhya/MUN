@@ -4,14 +4,14 @@ Run from backend/:  python test_trade.py   (or: pytest)
 """
 from fastapi.testclient import TestClient
 
-from main import app
-from rules import (
+from backend.main import app
+from backend.rules import (
     ALLIANCE_TRADE_EFFICIENCY,
     TRADE_EFFICIENCY_MAX,
     recalculate_trade_effects,
     validate_world,
 )
-from simulation import create_initial_world, simulation
+from backend.simulation import create_initial_world, simulation
 
 client = TestClient(app)
 

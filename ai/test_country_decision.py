@@ -22,7 +22,7 @@ from country_agent import (
     ResponseError,
     parse_decision,
 )
-from simulation import create_initial_world
+from backend.simulation import create_initial_world
 
 SITUATION = "Caldoria blocked our trade route."
 
