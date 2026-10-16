@@ -13,7 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from models import (
+from .models import (
     ActionResponse,
     AidRequest,
     AllianceRequest,
@@ -23,8 +23,8 @@ from models import (
     SanctionRequest,
     WorldState,
 )
-from rules import ActionError
-from simulation import simulation
+from .rules import ActionError
+from .simulation import simulation
 
 logger = logging.getLogger("mun")
 

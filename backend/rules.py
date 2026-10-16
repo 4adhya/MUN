@@ -14,8 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:  # avoid a circular import at runtime
-    from models import Country, WorldState
+if TYPE_CHECKING:
+    from .models import Country, WorldState
 
 # --- Limits -----------------------------------------------------------------
 STABILITY_MIN = 0

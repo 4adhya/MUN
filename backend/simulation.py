@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 from threading import RLock
 from typing import Callable, Optional
 
-from countries import build_countries, build_trade_routes
-from models import ActionResponse, Country, DiplomacyEvent, WorldState
-from rules import (
+from .countries import build_countries, build_trade_routes
+from .models import ActionResponse, Country, DiplomacyEvent, WorldState
+from .rules import (
     ActionResult,
     apply_aid,
     apply_alliance,

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from models import Country, TradeRoute
-from rules import (
+from .models import Country, TradeRoute
+from .rules import (
     SHARED_ALLIANCE_BONUS,
     TRADE_ROUTE_BONUS_PER_10_VOLUME,
     clamp_relationship,
