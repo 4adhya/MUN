@@ -7,7 +7,6 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-import main
 from main import DEFAULT_CORS_ORIGINS, app, cors_origins
 from simulation import simulation
 

@@ -376,6 +376,9 @@ def validate_world(world: "WorldState") -> list[str]:
                 problems.append(f"{c.id}: invalid sanctioning country {sid}")
         if not STABILITY_MIN <= c.stability <= STABILITY_MAX:
             problems.append(f"{c.id}: stability {c.stability} out of range")
+        for resource, amount in c.resources.items():
+            if not RESOURCE_MIN <= amount <= RESOURCE_MAX:
+                problems.append(f"{c.id}: resource {resource} {amount} out of range")
         if c.gdp < 0:
             problems.append(f"{c.id}: negative gdp")
 

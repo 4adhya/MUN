@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -57,23 +56,6 @@ class DiplomacyEvent(BaseModel):
     message: str = Field(description="Human-readable summary of what happened")
     timestamp: datetime = Field(description="UTC time the event was created")
     effects: dict[str, Any] = Field(default_factory=dict, description="Summary of state changes caused")
-
-
-class ActionType(str, Enum):
-    """Actions a country can take. Handlers arrive in later steps."""
-    IMPOSE_SANCTION = "impose_sanction"
-    LIFT_SANCTION = "lift_sanction"
-    FORM_ALLIANCE = "form_alliance"
-    LEAVE_ALLIANCE = "leave_alliance"
-    SEND_AID = "send_aid"
-
-
-class ActionRequest(BaseModel):
-    action: ActionType
-    actor: str = Field(description="Country id taking the action")
-    target: Optional[str] = Field(default=None, description="Country id the action is aimed at")
-    amount: Optional[float] = Field(default=None, ge=0, description="Size of the action, e.g. aid amount")
-    note: Optional[str] = None
 
 
 def _normalize_id(value: Any) -> Any:

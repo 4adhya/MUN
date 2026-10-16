@@ -1,9 +1,31 @@
-# MUN Backend (Person 2: backend + simulation)
+# MUN Simulation Backend
 
-FastAPI service holding the in-memory simulation state for 10 fictional countries.
-No database, no AI. Players can sanction, ally and send aid; every action is logged as a diplomacy event.
+Backend for the MUN geopolitical simulation. It owns the world: 10 fictional countries with GDP, stability, resources,
+relationships, alliances, sanctions and trade routes. Players (the React frontend, or AI agents) act through a small
+REST API: **sanction**, **ally**, **send aid**. Each action changes the world by fixed rules and is logged as a diplomacy event.
+State is in memory only (no database); everything is deterministic.
 
-## Quick start
+## Tech stack
+
+Python 3.10+ · FastAPI · Pydantic v2 · Uvicorn · pytest (tests only)
+
+## Folder structure
+
+```
+.gitignore
+backend/
+  main.py             FastAPI app, CORS, error handlers, routes (HTTP layer only)
+  models.py           Pydantic models: Country, TradeRoute, DiplomacyEvent, requests/responses, WorldState
+  countries.py        Initial fictional world: countries, alliances, trade routes, starting relationships
+  rules.py            Tuning constants, apply_sanction / apply_alliance / apply_aid, trade recalculation, validate_world
+  simulation.py       Simulation: owns the WorldState, runs actions atomically, event history, reset
+  conftest.py         pytest fixture: every test starts from the original world
+  test_*.py           Tests (see "Tests")
+  requirements.txt
+  README.md
+```
+
+## Setup and run
 
 ```bash
 cd backend
@@ -23,6 +45,8 @@ uvicorn main:app --reload
 
 CORS is an explicit allow-list, not `*`. For a deployed frontend set `CORS_ORIGINS` to a comma-separated list
 (this replaces the defaults): `CORS_ORIGINS=https://my-app.vercel.app,http://localhost:5173 uvicorn main:app`
+
+**Environment variables:** only `CORS_ORIGINS` (optional, see above). No secrets or API keys are needed or used.
 
 State lives in memory: restarting the server or calling `POST /simulation/reset` returns the same starting world.
 
@@ -170,17 +194,16 @@ Note `detail` is a string for every error except 422, where it is a list.
 
 ```bash
 cd backend
-pip install pytest
-python -m pytest -q          # all 76 tests
+python -m pytest -q          # full suite (88 tests); also works from the repo root: pytest -q backend
 ```
 
 | File | Covers |
 |------|--------|
 | `test_smoke.py` | health, world shape, country lookup, consistency, CORS |
 | `test_actions.py` | sanction / alliance / aid rules, errors, events, reset |
-| `test_trade.py` | trade-route economy (sanction cuts, alliance boosts, no stacking, never negative) |
+| `test_trade.py` | trade routes: sanction cuts, alliance boosts, no stacking, never negative, reset |
 | `test_api_contract.py` | the HTTP contract above: shapes, status codes, CORS, `/docs`, `/openapi.json`, frontend and AI workflows |
-| `conftest.py` | resets the world before every test |
+| `test_state_safety.py` | repeated and failing actions: seeded 400-step fuzz run, failed actions change nothing, corrupting rules are blocked |
 
 ## Trade model
 
@@ -192,15 +215,5 @@ Each route has `base_volume` (normal level, never changes), `efficiency` (percen
 - **Alliance:** active direct routes are set to efficiency 110 (a floor, never added), so it cannot stack. No routes are created.
 - `recalculate_trade_effects(world)` rebuilds route state and `trade_partners` from the sanctions in the world. It is idempotent and
   `simulation.py` runs it after every action. `validate_world` checks the result.
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `main.py` | FastAPI app, CORS, error handlers, routes (no business logic) |
-| `models.py` | Pydantic models: Country, TradeRoute, DiplomacyEvent, request/response models, WorldState |
-| `countries.py` | Hard-coded countries, alliances, trade routes, starting relationships |
-| `simulation.py` | `Simulation`: owns the `WorldState`, runs actions atomically, event history, reset |
-| `rules.py` | Tuning constants, `apply_sanction/alliance/aid`, trade recalculation, errors, `validate_world` |
 
 Everything is deterministic: restarting the server always gives the same world.
