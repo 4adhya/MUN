@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import WorldMap from "./components/WorldMap";
+import ConferenceRoom from "./components/ConferenceRoom";
 
 const countries = [
   { name: "India", flag: "🇮🇳", capital: "New Delhi", population: "1.43B", economy: "Emerging", military: "Strong", stability: 74, color: "#f59e0b", gdp: "$3.9T", role: "Regional power", x: 66, y: 48 },
@@ -28,6 +29,7 @@ const initialEvents = [
 ];
 
 const tabs = [
+  ["conference", "Conference", Landmark],
   ["dashboard", "Dashboard", Activity],
   ["map", "World Map", Globe2],
   ["countries", "Countries", Users],
@@ -256,13 +258,21 @@ export default function App() {
   }
 
   function enterGame() {
-    setScreen("game");
-    setTab("dashboard");
-    setEvents([
-      { type: "alert", title: "Regional trade tensions", detail: `${country.name} is reviewing its diplomatic position amid rising tensions.`, time: "Just now" },
-      ...initialEvents.slice(1),
-    ]);
-  }
+  setScreen("game");
+  setTab("conference");
+  setTurn(1);
+  setActionResult(null);
+  setShowAdvisor(false);
+  setEvents([
+    {
+      type: "alert",
+      title: "Opening sanctions announced",
+      detail: "The opposing delegation has opened the conference with sanctions.",
+      time: "Opening move",
+    },
+    ...initialEvents.slice(1),
+  ]);
+}
 
   function submitAction(kind) {
     const names = {
@@ -426,7 +436,16 @@ export default function App() {
           </aside>
           <main className="game-main">
             <div className="game-topline"><div><span className="eyebrow">GLOBAL AFFAIRS / SIMULATION</span><h1>{tabs.find((t) => t[0] === tab)?.[1]}</h1><p>Monitor the world. Understand your position. Choose your next move.</p></div><div className="topline-actions"><span className="turn-badge"><Clock3 size={14} /> TURN {String(turn).padStart(2, "0")}</span><button className="icon-button" onClick={() => setShowAdvisor(!showAdvisor)} title="Toggle advisor"><MessageSquare size={17} /></button></div></div>
-
+            {tab === "conference" && (
+  <ConferenceRoom
+    country={country}
+    onExit={() => {
+      setScreen("select");
+      setShowAdvisor(false);
+    }}
+    onAdvisor={() => setShowAdvisor(true)}
+  />
+)}
             {tab === "dashboard" && <>
               <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value="72/100" sub="Illustrative" color="green" /><Metric icon={ZapIcon} label="Global tension" value="41/100" sub="Moderate" color="red" /><Metric icon={Handshake} label="Active alliances" value="03" sub="Across the world" color="purple" /><Metric icon={Target} label="Your influence" value="68/100" sub="Regional standing" color="gold" /></div>
               <div className="dashboard-grid">
