@@ -107,18 +107,18 @@ class AgentProfile:
 
 
 AURELIA_PROFILE = AgentProfile(
-    country_id="aurelia",
-    name="Aurelia",
+    country_id="india",
+    name="India",
     personality=(
         "Pragmatic and economically focused. Defensive rather than aggressive. Prefers diplomacy and "
         "de-escalation before escalation, and protects national interests without needless confrontation."
     ),
     goals=(
-        "Protect Aurelia's economic stability (GDP and internal stability).",
+        "Protect India's economic stability (GDP and internal stability).",
         "Maintain beneficial trade and keep its trade routes flowing.",
         "Improve diplomatic relationships where that is useful.",
         "Respond proportionately to threats and hostile acts.",
-        "Avoid unnecessary economic damage, including damage to Aurelia itself.",
+        "Avoid unnecessary economic damage, including damage to India itself.",
     ),
 )
 

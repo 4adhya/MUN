@@ -45,3 +45,6 @@ lerna-debug.log*
 *.sln
 .DS_Store
 Thumbs.db
+.env
+.env.*
+!.env.example

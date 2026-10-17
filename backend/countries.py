@@ -1,8 +1,9 @@
-"""Fictional starting data: 10 countries, trade routes and relationships.
 
-Everything here is hard-coded and deterministic. Trade partners and initial
-relationship scores are *derived* from the raw data below so they can never
-disagree with each other.
+"""Starting data for the real-country MUN simulation.
+
+Country names and IDs correspond to real countries. GDP, stability, resources,
+relationships, and trade-route values are illustrative simulation values, not
+live economic data or claims about current diplomatic relations.
 """
 from __future__ import annotations
 
@@ -15,74 +16,110 @@ from .rules import (
     clamp_relationship,
 )
 
-# --- Raw country data ---------------------------------------------------------
-# gdp is in billions of fictional dollars. resources are stockpile indexes (0-100).
+# GDP is represented in billions of illustrative simulation dollars.
+# Resource values are indexes from 0 to 100.
 _RAW_COUNTRIES: list[dict] = [
-    {"id": "aurelia",  "name": "Aurelia",  "gdp": 1800.0, "stability": 82,
-     "resources": {"tech": 85, "minerals": 30, "oil": 15}},
-    {"id": "brevania", "name": "Brevania", "gdp": 950.0,  "stability": 75,
-     "resources": {"food": 80, "tech": 45, "energy": 40}},
-    {"id": "caldoria", "name": "Caldoria", "gdp": 1200.0, "stability": 60,
-     "resources": {"oil": 90, "minerals": 40, "food": 25}},
-    {"id": "dravenia", "name": "Dravenia", "gdp": 700.0,  "stability": 55,
-     "resources": {"minerals": 85, "energy": 50, "food": 35}},
-    {"id": "eldoria",  "name": "Eldoria",  "gdp": 520.0,  "stability": 68,
-     "resources": {"food": 70, "oil": 35, "tech": 30}},
-    {"id": "fyrnia",   "name": "Fyrnia",   "gdp": 400.0,  "stability": 48,
-     "resources": {"food": 75, "energy": 30, "minerals": 20}},
-    {"id": "garvonia", "name": "Garvonia", "gdp": 880.0,  "stability": 52,
-     "resources": {"minerals": 80, "oil": 45, "tech": 25}},
-    {"id": "helvaris", "name": "Helvaris", "gdp": 1450.0, "stability": 90,
-     "resources": {"tech": 90, "energy": 55, "food": 30}},
-    {"id": "istoria",  "name": "Istoria",  "gdp": 310.0,  "stability": 40,
-     "resources": {"minerals": 55, "food": 45, "energy": 20}},
-    {"id": "jorvania", "name": "Jorvania", "gdp": 640.0,  "stability": 63,
-     "resources": {"energy": 88, "oil": 50, "minerals": 35}},
+    {
+        "id": "india",
+        "name": "India",
+        "gdp": 3900.0,
+        "stability": 74,
+        "resources": {"food": 75, "tech": 60, "minerals": 55, "energy": 45},
+    },
+    {
+        "id": "united-states",
+        "name": "United States",
+        "gdp": 28800.0,
+        "stability": 82,
+        "resources": {"tech": 95, "energy": 85, "food": 90, "minerals": 75},
+    },
+    {
+        "id": "china",
+        "name": "China",
+        "gdp": 18700.0,
+        "stability": 77,
+        "resources": {"tech": 85, "minerals": 90, "energy": 65, "food": 80},
+    },
+    {
+        "id": "france",
+        "name": "France",
+        "gdp": 3200.0,
+        "stability": 79,
+        "resources": {"tech": 75, "food": 80, "energy": 70, "minerals": 45},
+    },
+    {
+        "id": "united-kingdom",
+        "name": "United Kingdom",
+        "gdp": 3600.0,
+        "stability": 78,
+        "resources": {"tech": 80, "energy": 55, "food": 65, "minerals": 40},
+    },
+    {
+        "id": "russia",
+        "name": "Russia",
+        "gdp": 2200.0,
+        "stability": 61,
+        "resources": {"energy": 95, "minerals": 90, "food": 65, "tech": 55},
+    },
+    {
+        "id": "japan",
+        "name": "Japan",
+        "gdp": 4000.0,
+        "stability": 85,
+        "resources": {"tech": 95, "minerals": 30, "energy": 25, "food": 45},
+    },
+    {
+        "id": "brazil",
+        "name": "Brazil",
+        "gdp": 2200.0,
+        "stability": 68,
+        "resources": {"food": 95, "minerals": 75, "energy": 65, "tech": 50},
+    },
 ]
 
-# Alliance name -> member ids
-ALLIANCES: dict[str, list[str]] = {
-    "Northern Accord": ["aurelia", "brevania", "dravenia", "helvaris"],
-    "Meridian Pact": ["caldoria", "eldoria", "garvonia"],
-    "Sunward Union": ["fyrnia", "jorvania"],
-}
+# No pre-existing alliances are assumed. AI agents can propose alliances
+# through the simulation's normal validated action system.
+ALLIANCES: dict[str, list[str]] = {}
 
-# (exporter, importer, resource, volume)
+# (exporter, importer, resource, base trade volume).
+# These are illustrative game routes, not measured real-world trade flows.
 _RAW_TRADE_ROUTES: list[tuple[str, str, str, int]] = [
-    ("aurelia",  "brevania", "tech",     40),
-    ("brevania", "aurelia",  "food",     30),
-    ("caldoria", "aurelia",  "oil",      50),
-    ("caldoria", "eldoria",  "oil",      35),
-    ("eldoria",  "caldoria", "food",     25),
-    ("dravenia", "helvaris", "minerals", 40),
-    ("helvaris", "dravenia", "tech",     30),
-    ("fyrnia",   "garvonia", "food",     30),
-    ("garvonia", "fyrnia",   "minerals", 25),
-    ("istoria",  "aurelia",  "minerals", 20),
-    ("jorvania", "istoria",  "energy",   30),
-    ("jorvania", "fyrnia",   "energy",   35),
-    ("garvonia", "caldoria", "minerals", 30),
-    ("dravenia", "jorvania", "minerals", 20),
-    ("helvaris", "eldoria",  "tech",     25),
-    ("brevania", "istoria",  "food",     20),
+    ("india", "united-states", "tech", 30),
+    ("united-states", "india", "energy", 25),
+    ("india", "china", "minerals", 20),
+    ("china", "japan", "tech", 35),
+    ("japan", "united-states", "tech", 35),
+    ("united-states", "france", "food", 20),
+    ("france", "united-kingdom", "food", 20),
+    ("united-kingdom", "japan", "tech", 15),
+    ("russia", "china", "energy", 40),
+    ("russia", "india", "energy", 25),
+    ("brazil", "china", "food", 35),
+    ("brazil", "india", "food", 25),
+    ("brazil", "france", "minerals", 20),
+    ("united-states", "brazil", "tech", 15),
+    ("france", "india", "tech", 15),
+    ("china", "united-states", "minerals", 20),
 ]
 
-# Hand-tuned historical grudges (negative) and friendships (positive).
-# Keys are unordered pairs; the value is added on top of alliance/trade effects.
+# Initial diplomatic scores are game assumptions, not statements of current
+# real-world relationships. Keys are unordered country pairs.
 _RELATIONSHIP_ADJUSTMENTS: dict[frozenset[str], int] = {
-    frozenset({"aurelia", "garvonia"}): -45,
-    frozenset({"helvaris", "garvonia"}): -35,
-    frozenset({"caldoria", "dravenia"}): -30,
-    frozenset({"dravenia", "jorvania"}): -30,
-    frozenset({"eldoria", "istoria"}): -25,
-    frozenset({"brevania", "fyrnia"}): -20,
-    frozenset({"aurelia", "jorvania"}): -15,
-    frozenset({"istoria", "fyrnia"}): 15,
+    frozenset({"india", "united-states"}): 15,
+    frozenset({"india", "russia"}): 12,
+    frozenset({"india", "china"}): -20,
+    frozenset({"united-states", "china"}): -25,
+    frozenset({"united-states", "russia"}): -30,
+    frozenset({"france", "russia"}): -20,
+    frozenset({"united-kingdom", "russia"}): -20,
+    frozenset({"china", "japan"}): -12,
+    frozenset({"brazil", "china"}): 8,
+    frozenset({"brazil", "united-states"}): 5,
 }
 
 
-# --- Builders -------------------------------------------------------------------
 def build_trade_routes() -> list[TradeRoute]:
+    """Build the initial illustrative trade routes."""
     return [
         TradeRoute(
             id=f"route-{i:02d}",
@@ -90,40 +127,50 @@ def build_trade_routes() -> list[TradeRoute]:
             importer=importer,
             resource=resource,
             volume=volume,
-            base_volume=volume,  # normal trade level; efficiency starts at 100%
+            base_volume=volume,
         )
-        for i, (exporter, importer, resource, volume) in enumerate(_RAW_TRADE_ROUTES, start=1)
+        for i, (exporter, importer, resource, volume)
+        in enumerate(_RAW_TRADE_ROUTES, start=1)
     ]
 
 
 def _initial_relationships() -> dict[str, dict[str, int]]:
-    ids = [c["id"] for c in _RAW_COUNTRIES]
-    scores: dict[str, dict[str, int]] = {i: {} for i in ids}
+    ids = [country["id"] for country in _RAW_COUNTRIES]
+    scores: dict[str, dict[str, int]] = {country_id: {} for country_id in ids}
 
     for a, b in combinations(ids, 2):
-        score = 0
-        # +25 for every alliance both countries belong to
-        score += SHARED_ALLIANCE_BONUS * sum(
-            1 for members in ALLIANCES.values() if a in members and b in members
+        score = SHARED_ALLIANCE_BONUS * sum(
+            1
+            for members in ALLIANCES.values()
+            if a in members and b in members
         )
-        # +3 per 10 units of trade volume between the two (either direction)
-        volume = sum(
-            v for (e, i, _r, v) in _RAW_TRADE_ROUTES if {e, i} == {a, b}
-        )
-        score += (volume // 10) * TRADE_ROUTE_BONUS_PER_10_VOLUME
-        # hand-tuned grudges / friendships
-        score += _RELATIONSHIP_ADJUSTMENTS.get(frozenset({a, b}), 0)
 
+        volume = sum(
+            amount
+            for exporter, importer, _resource, amount in _RAW_TRADE_ROUTES
+            if {exporter, importer} == {a, b}
+        )
+        score += (
+            volume // 10
+        ) * TRADE_ROUTE_BONUS_PER_10_VOLUME
+
+        score += _RELATIONSHIP_ADJUSTMENTS.get(frozenset({a, b}), 0)
         score = clamp_relationship(score)
+
+        # The initial relationship matrix is symmetric.
         scores[a][b] = score
-        scores[b][a] = score  # relationships are symmetric at the start
+        scores[b][a] = score
+
     return scores
 
 
 def build_countries() -> list[Country]:
+    """Create countries and derive their initial trade-partner lists."""
     relationships = _initial_relationships()
+    partners: dict[str, list[str]] = {
+        country["id"]: [] for country in _RAW_COUNTRIES
+    }
 
-    partners: dict[str, list[str]] = {c["id"]: [] for c in _RAW_COUNTRIES}
     for exporter, importer, _resource, _volume in _RAW_TRADE_ROUTES:
         if importer not in partners[exporter]:
             partners[exporter].append(importer)
@@ -131,15 +178,21 @@ def build_countries() -> list[Country]:
             partners[importer].append(exporter)
 
     countries: list[Country] = []
+
     for raw in _RAW_COUNTRIES:
-        cid = raw["id"]
+        country_id = raw["id"]
         countries.append(
             Country(
                 **raw,
-                trade_partners=sorted(partners[cid]),
-                alliances=[name for name, members in ALLIANCES.items() if cid in members],
+                trade_partners=sorted(partners[country_id]),
+                alliances=[
+                    alliance
+                    for alliance, members in ALLIANCES.items()
+                    if country_id in members
+                ],
                 sanctions=[],
-                relationships=relationships[cid],
+                relationships=relationships[country_id],
             )
         )
+
     return countries
