@@ -1,459 +1,497 @@
-import { useEffect, useRef, useState } from "react";
-import { useSimulation } from "./hooks/useSimulation.js";
-import WorldMap from "./components/WorldMap.jsx";
-import CountryPanel from "./components/CountryPanel.jsx";
-import {
-  countryNames, formatGdp, stabilityLabel, stabilityLevel, timeAgo, tradeVolumeByCountry, worldTotals, titleCase,
-} from "./lib/worldView.js";
-import {
-  Globe2, Eye, Users, Gavel, ArrowRight, ArrowLeft,
-  LayoutDashboard, CalendarDays, MessageCircle, FileText,
-  Network, AlertTriangle, ChartNoAxesColumn,
-  Search, Bell, ShieldCheck, Activity, RotateCcw, Handshake, Ban,
-  Menu, X
-} from "lucide-react";
 
-const roles = [
+import { useState } from "react";
+import NameEntry from "./components/NameEntry";
+import "./App.css";
+
+const initialProfile = () => {
+  try {
+    return JSON.parse(localStorage.getItem("munProfile")) || null;
+  } catch {
+    return null;
+  }
+};
+
+const scenarios = [
   {
-    id: "guest",
-    title: "Guest",
-    subtitle: "Observe the world",
-    description: "Explore global events, crises and diplomatic developments.",
-    icon: Eye,
-    color: "guest",
-    detail: "Read-only access",
+    emoji: "🌐",
+    title: "Global Cyberattack",
+    committee: "UN Security Council",
+    level: "Intermediate",
+    description:
+      "Countries must cooperate to respond to a worldwide cyberattack.",
   },
   {
-    id: "participant",
-    title: "Participant",
-    subtitle: "Shape the outcome",
-    description: "Represent a country, negotiate alliances and propose resolutions.",
-    icon: Users,
-    color: "participant",
-    detail: "Delegate access",
+    emoji: "🌱",
+    title: "Climate Emergency",
+    committee: "UN Environment Programme",
+    level: "Beginner",
+    description:
+      "Negotiate an international agreement to address climate change.",
   },
   {
-    id: "jury",
-    title: "Jury Member",
-    subtitle: "Guide the proceedings",
-    description: "Observe debate, review delegates and oversee the committee.",
-    icon: Gavel,
-    color: "jury",
-    detail: "Executive board access",
+    emoji: "🕊️",
+    title: "International Peace",
+    committee: "UN Security Council",
+    level: "Advanced",
+    description:
+      "Prevent an escalating international conflict through diplomacy.",
   },
 ];
 
-const navItems = [
-  { label: "World Overview", icon: LayoutDashboard },
-  { label: "Agenda", icon: CalendarDays },
-  { label: "Debate Hall", icon: MessageCircle },
-  { label: "Resolutions", icon: FileText },
-  { label: "Countries", icon: Globe2 },
-  { label: "Trade & Economy", icon: Network },
-  { label: "Crisis Center", icon: AlertTriangle },
-  { label: "Analytics", icon: ChartNoAxesColumn },
-];
+function Dashboard({ profile, onChangeProfile }) {
+  const [page, setPage] = useState("home");
+  const [selectedScenario, setSelectedScenario] = useState(scenarios[0]);
+  const [joinCode, setJoinCode] = useState("");
+  const [message, setMessage] = useState("");
+  const [speech, setSpeech] = useState("");
+  const [votes, setVotes] = useState(null);
 
-function Brand({ compact = false }) {
-  return (
-    <div className={`brand ${compact ? "brand-compact" : ""}`}>
-      <div className="brand-emblem">
-        <Globe2 size={compact ? 21 : 31} strokeWidth={1.35} />
-      </div>
-      <div>
-        <div className="brand-name">MUN SIMULATOR</div>
-        <div className="brand-caption">DIPLOMACY IN ACTION</div>
-      </div>
-    </div>
-  );
-}
+  function startSimulation(scenario) {
+    setSelectedScenario(scenario);
+    setMessage("");
+    setSpeech("");
+    setVotes(null);
+    setPage("simulation");
+  }
 
-function RoleSelection({ onSelect }) {
+  function joinConference(event) {
+    event.preventDefault();
+
+    if (!joinCode.trim()) {
+      setMessage("Please enter a conference code.");
+      return;
+    }
+
+    setMessage(
+      `Demo mode: conference ${joinCode.trim()} is ready to connect.`
+    );
+  }
+
+  function submitSpeech(event) {
+    event.preventDefault();
+
+    if (!speech.trim()) {
+      setMessage("Write your speech before submitting.");
+      return;
+    }
+
+    setMessage(
+      "Your speech has been recorded in this demo. Connect the AI backend to receive a delegate response and speech feedback."
+    );
+  }
+
+  const navigation = [
+    { id: "home", emoji: "🏠", label: "Home" },
+    { id: "explore", emoji: "🌍", label: "Explore Crises" },
+    { id: "join", emoji: "🔑", label: "Join Conference" },
+    { id: "practice", emoji: "🤖", label: "AI Practice" },
+    { id: "results", emoji: "🏆", label: "My Results" },
+  ];
+
   return (
-    <main className="profile-page">
-      <header className="profile-topbar">
-        <Brand />
-        <div className="profile-top-right">
-          <span className="status-pill"><span className="live-dot" /> SIMULATION ONLINE</span>
-          <span className="edition-label">GLOBAL EDITION · 2026</span>
+    <div className="mun-app">
+      <header className="mun-navbar">
+        <button
+          className="mun-brand"
+          onClick={() => setPage("home")}
+          aria-label="Go to home"
+        >
+          <span className="mun-brand-icon">🌐</span>
+          <span>
+            <strong>MUNVERSE</strong>
+            <small>DIPLOMACY IN ACTION</small>
+          </span>
+        </button>
+
+        <div className="mun-user">
+          <span className="mun-user-avatar">{profile.avatar}</span>
+          <span className="mun-user-name">{profile.name}</span>
+          <button
+            className="mun-change-profile"
+            onClick={onChangeProfile}
+            title="Change your name or avatar"
+          >
+            Change
+          </button>
         </div>
       </header>
 
-      <section className="profile-intro">
-        <div className="intro-eyebrow">
-          <span className="intro-line" />
-          YOUR WORLD. YOUR PERSPECTIVE.
-          <span className="intro-line" />
-        </div>
-        <h1>Who's entering the <em>simulation?</em></h1>
-        <p>
-          Choose your profile to enter a world where every decision
-          changes the course of diplomacy.
-        </p>
-      </section>
+      <div className="mun-layout">
+        <aside className="mun-sidebar">
+          <p className="mun-sidebar-label">YOUR COMMAND CENTRE</p>
 
-      <section className="profile-grid" aria-label="Choose your role">
-        {roles.map((role, index) => {
-          const Icon = role.icon;
-          return (
+          {navigation.map((item) => (
             <button
-              className={`profile-card profile-${role.color}`}
-              key={role.id}
-              onClick={() => onSelect(role)}
-              style={{ "--profile-index": index }}
+              key={item.id}
+              className={`mun-nav-item ${
+                page === item.id ? "active" : ""
+              }`}
+              onClick={() => {
+                setMessage("");
+                setPage(item.id);
+              }}
             >
-              <div className="profile-card-top">
-                <span className="profile-number">0{index + 1}</span>
-                <span className="profile-access">{role.detail}</span>
-              </div>
-
-              <div className="profile-art">
-                <div className="art-orbit orbit-one" />
-                <div className="art-orbit orbit-two" />
-                <div className="art-glow" />
-                <div className="profile-avatar">
-                  <Icon size={48} strokeWidth={1.15} />
-                </div>
-                <span className="art-star star-one">✳</span>
-                <span className="art-star star-two">✧</span>
-                <span className="art-dot dot-one" />
-                <span className="art-dot dot-two" />
-              </div>
-
-              <div className="profile-card-copy">
-                <div className="profile-subtitle">{role.subtitle}</div>
-                <h2>{role.title}</h2>
-                <p>{role.description}</p>
-              </div>
-
-              <div className="profile-card-bottom">
-                <span>Enter as {role.title.toLowerCase()}</span>
-                <span className="profile-arrow"><ArrowRight size={18} /></span>
-              </div>
-            </button>
-          );
-        })}
-      </section>
-
-      <div className="profile-footnote">
-        <ShieldCheck size={15} />
-        <span>Your experience and available actions depend on your selected role.</span>
-      </div>
-
-      <footer className="profile-footer">
-        <Brand compact />
-        <span>A LIVING GEOPOLITICAL WORLD</span>
-        <span>Observe · Negotiate · Decide</span>
-      </footer>
-    </main>
-  );
-}
-
-function CrisisThumbnail({ type }) {
-  return (
-    <div className={`crisis-thumbnail thumbnail-${type}`}>
-      {type === "sea" && <Globe2 size={25} />}
-      {type === "energy" && <Activity size={25} />}
-      {type === "human" && <Users size={25} />}
-    </div>
-  );
-}
-
-function StatusBanners({ sim }) {
-  return (
-    <>
-      {sim.status === "ready" && sim.error && (
-        <div className="sim-banner sim-banner-error" role="alert">
-          <span>{sim.error}</span>
-          <button onClick={sim.retry}>Retry</button>
-        </div>
-      )}
-      {sim.notice && (
-        <div className={`sim-banner sim-banner-${sim.notice.kind}`} role={sim.notice.kind === "error" ? "alert" : "status"}>
-          <span>{sim.notice.text}</span>
-          <button onClick={sim.dismissNotice} aria-label="Dismiss message"><X size={13} /></button>
-        </div>
-      )}
-    </>
-  );
-}
-
-function Dashboard({ role, onChangeProfile, sim }) {
-  const { world, events } = sim;
-  const [activePage, setActivePage] = useState("World Overview");
-  const [selectedId, setSelectedId] = useState("");
-  const [actorId, setActorId] = useState("aurelia");
-  const [search, setSearch] = useState("");
-  const [resourceTab, setResourceTab] = useState("");
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [mobileNav, setMobileNav] = useState(false);
-
-  const isGuest = role.id === "guest";
-  const isJury = role.id === "jury";
-  const term = search.trim().toLowerCase();
-
-  const names = world ? countryNames(world) : {};
-  const totals = world ? worldTotals(world) : null;
-  const tradeVolume = world ? tradeVolumeByCountry(world) : {};
-  const allianceNames = world ? [...new Set(world.countries.flatMap((c) => c.alliances))] : [];
-  const resources = world ? [...new Set(world.trade_routes.map((r) => r.resource))].sort() : [];
-  const activeResource = resources.includes(resourceTab) ? resourceTab : resources[0];
-
-  const crises = totals
-    ? totals.sanctions.map(({ actor, target }) => ({
-        key: `${actor}-${target}`,
-        title: `${names[actor]} sanctions ${names[target]}`,
-        description: `${names[target]} lost GDP and stability; direct trade is cut off.`,
-        target,
-      }))
-    : [];
-  const visibleCrises = crises.filter((c) => `${c.title} ${c.description}`.toLowerCase().includes(term));
-  const visibleCountries = world ? [...world.countries].filter((c) => c.name.toLowerCase().includes(term)).sort((a, b) => b.gdp - a.gdp) : [];
-  const countryPanelRef = useRef(null);
-
-    useEffect(() => {
-      if (!selectedId || !countryPanelRef.current) return;
-
-      countryPanelRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, [selectedId]);
-  const selectCountry = (id) => setSelectedId(id);
-
-  function handleReset() {
-    if (window.confirm("Reset the simulation to its starting state? All events will be cleared.")) {
-      setSelectedId("");
-      sim.reset();
-    }
-  }
-
-  const loadingOrError = sim.status !== "ready" || !world;
-  const actorName = names[actorId] ?? "Aurelia";
-
-  return (
-    <main className="dashboard-page">
-      <aside className={`dashboard-sidebar ${mobileNav ? "mobile-nav-open" : ""}`}>
-        <div className="sidebar-brand">
-          <Brand />
-          <button className="mobile-close" onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={19} /></button>
-        </div>
-
-        <nav className="main-navigation">
-          {navItems.map(({ label, icon: Icon }) => (
-            <button
-              key={label}
-              className={`nav-item ${activePage === label ? "nav-active" : ""}`}
-              onClick={() => { setActivePage(label); setMobileNav(false); }}
-            >
-              <Icon size={17} strokeWidth={1.7} />
-              <span>{label}</span>
+              <span>{item.emoji}</span>
+              {item.label}
             </button>
           ))}
-        </nav>
 
-        <div className="sidebar-session">
-          <div className="session-label">CURRENT SESSION</div>
-          <div className="session-name"><span className="session-emblem">🌐</span><div><strong>UNSC</strong><small>Global Security &amp;<br />Maritime Stability</small></div></div>
-          <div className="session-progress"><span /></div>
-          <div className="session-meta"><span>Turn {world ? world.turn : "–"}</span><strong>{world ? `${events.length} ${events.length === 1 ? "event" : "events"}` : "…"}</strong></div>
-        </div>
-
-        <button className="change-profile" onClick={onChangeProfile}>
-          <ArrowLeft size={16} />
-          <span>Change profile</span>
-        </button>
-        <div className="sidebar-decor">
-          <div className="decor-lines" />
-          <span>“Dialogue is the beginning of diplomacy.”</span>
-        </div>
-      </aside>
-
-      <section className="dashboard-main">
-        <header className="dashboard-toolbar">
-          <button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
-          <label className="dashboard-search">
-            <Search size={15} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search country or crisis..." />
-          </label>
-          <div className="toolbar-spacer" />
-          <span className={`live-status ${sim.status === "error" ? "live-status-offline" : ""}`}><i /> {sim.status === "error" ? "Backend offline" : sim.status === "loading" ? "Connecting…" : "Live Simulation"}</span>
-          <span className="round-label">Turn {world ? world.turn : "–"}</span>
-          {!isGuest && (
-            <button className="reset-button" onClick={handleReset} disabled={sim.busy || loadingOrError} title="Reset the simulation to its starting state">
-              <RotateCcw size={13} /> Reset
-            </button>
-          )}
-          <div className="notification-wrap">
-            <button className="icon-button" onClick={() => setShowNotifications(!showNotifications)} aria-label="Notifications">
-              <Bell size={17} />{events.length > 0 && <i />}
-            </button>
-            {showNotifications && (
-              <div className="notification-popover">
-                <strong>Latest events</strong>
-                {events.length === 0 ? <p>No events yet.</p> : events.slice(0, 3).map((e) => <p key={e.id}>{e.message}</p>)}
-              </div>
-            )}
+          <div className="mun-sidebar-bottom">
+            <span>✨</span>
+            <p>Your decisions shape the world.</p>
           </div>
-          <button className="profile-mini" onClick={onChangeProfile} title="Change profile">
-            <span>{role.title === "Guest" ? "G" : role.title === "Jury Member" ? "J" : "P"}</span>
-            <div><strong>{role.title}</strong><small>{isGuest ? "Observer" : isJury ? "Executive Board" : actorName}</small></div>
-          </button>
-        </header>
+        </aside>
 
-        <div className="dashboard-body">
-          <StatusBanners sim={sim} />
-
-          {loadingOrError ? (
-            <div className="sim-state" role={sim.status === "error" ? "alert" : "status"}>
-              {sim.status === "error" ? (
-                <>
-                  <strong>The simulation is unavailable</strong>
-                  <p>{sim.error}</p>
-                  <button onClick={sim.retry}>Try again</button>
-                </>
-              ) : (
-                <><strong>Loading the simulation…</strong><p>Fetching the current world state.</p></>
-              )}
-            </div>
-          ) : (
+        <main className="mun-main">
+          {page === "home" && (
             <>
-              <section className="dashboard-hero">
-                <div className="dashboard-hero-copy">
-                  <div className="eyebrow">GLOBAL SIMULATION</div>
-                  <h1>{activePage === "World Overview" ? <>Shaping a More<br />Stable World</> : activePage}</h1>
-                  <p>{activePage === "World Overview" ? "Debate. Decide. See the real-world impact." : `Explore ${activePage.toLowerCase()} across the simulation.`}</p>
+              <section className="mun-hero">
+                <div className="mun-hero-content">
+                  <span className="mun-eyebrow">
+                    YOUR DIPLOMATIC JOURNEY STARTS HERE
+                  </span>
+
+                  <h1>
+                    The world is in
+                    <br />
+                    <span>your hands.</span>
+                  </h1>
+
+                  <p>
+                    Welcome, {profile.name}! Step into international
+                    diplomacy, negotiate with AI delegates, and discover
+                    how your decisions change the world.
+                  </p>
+
+                  <button
+                    className="mun-primary-button"
+                    onClick={() => setPage("explore")}
+                  >
+                    Start a Simulation <span>→</span>
+                  </button>
                 </div>
-                <div className="quote-block">
-                  <span className="quote-mark">“</span>
-                  <p>Diplomacy is the art<br />of turning complex realities<br />into shared possibilities.</p>
-                  <small>— UNITED NATIONS</small>
-                </div>
-                <div className="stability-block">
-                  <div className="stability-globe"><Globe2 size={52} strokeWidth={.8} /></div>
-                  <strong>{totals.averageStability.toFixed(1)}</strong>
-                  <span>Global Stability Index</span>
-                  <small>Average of {world.countries.length} countries</small>
+
+                <div className="mun-globe-art" aria-hidden="true">
+                  <span className="mun-orbit orbit-one" />
+                  <span className="mun-orbit orbit-two" />
+                  <span className="mun-big-globe">🌍</span>
+                  <span className="mun-floating-emoji">🤝</span>
+                  <span className="mun-floating-star">✦</span>
                 </div>
               </section>
 
-              <section className="map-section">
-                <WorldMap world={world} selectedId={selectedId} onSelect={selectCountry} search={search} />
-              </section>
-
-              {selectedId && (
-             <div ref={countryPanelRef} className="country-panel-scroll-target">
-              <CountryPanel
-                world={world}
-                countryId={selectedId}
-                canAct={!isGuest}
-                actorId={actorId}
-                onActorChange={setActorId}
-                sim={sim}
-                onClose={() => setSelectedId("")}
-              />
-              </div>
-              )}
-
-              <section className="stat-grid">
-                <div className="stat-card"><div className="stat-icon"><Globe2 size={19} /></div><div className="stat-content"><span>Global GDP</span><strong>{formatGdp(totals.totalGdp)}</strong><small>{world.countries.length} countries</small></div></div>
-                <div className="stat-card"><div className="stat-icon"><ChartNoAxesColumn size={19} /></div><div className="stat-content"><span>Trade Volume</span><strong>{totals.activeTradeVolume}</strong><small>{totals.activeRoutes} of {totals.totalRoutes} routes active</small></div></div>
-                <div className="stat-card"><div className="stat-icon"><Ban size={19} /></div><div className="stat-content"><span>Active Sanctions</span><strong className={totals.sanctions.length ? "stat-tension" : ""}>{totals.sanctions.length}</strong><small>{totals.cutRoutes.length} {totals.cutRoutes.length === 1 ? "route" : "routes"} cut off</small></div></div>
-                <div className="stat-card"><div className="stat-icon"><Handshake size={19} /></div><div className="stat-content"><span>Alliances</span><strong>{allianceNames.length}</strong><small>{events.length} {events.length === 1 ? "event" : "events"} recorded</small></div></div>
-              </section>
-
-              <section className="lower-grid">
-                <div className="data-panel affected-panel">
-                  <div className="panel-title"><div><h2>Countries</h2><span>GDP, trade and stability</span></div><button onClick={() => setActivePage("Countries")}>View all <ArrowRight size={13} /></button></div>
-                  <div className="country-table">
-                    <div className="table-row table-header"><span>Country</span><span>GDP</span><span>Trade volume</span><span>Stability</span></div>
-                    {visibleCountries.map((c) => (
-                      <button className="table-row country-row" key={c.id} onClick={() => selectCountry(c.id)}>
-                        <span className="country-name"><b>{c.name[0]}</b>{c.name}</span><span>{formatGdp(c.gdp)}</span><span>{tradeVolume[c.id]}</span><span><i className={`stability-tag tag-${stabilityLevel(c.stability)}`}>{c.stability} · {stabilityLabel(c.stability)}</i></span>
-                      </button>
-                    ))}
-                    {visibleCountries.length === 0 && <p className="empty-search">No matching countries.</p>}
+              <section className="mun-section">
+                <div className="mun-section-heading">
+                  <div>
+                    <span className="mun-eyebrow">YOUR NEXT MOVE</span>
+                    <h2>Where will you begin?</h2>
                   </div>
                 </div>
 
-                <div className="data-panel trade-panel">
-                  <div className="panel-title"><div><h2>Trade &amp; Resource Flow</h2><span>Routes by resource</span></div><button onClick={() => setActivePage("Trade & Economy")}>View all <ArrowRight size={13} /></button></div>
-                  <div className="resource-tabs">
-                    {resources.map((r) => <button key={r} className={r === activeResource ? "resource-active" : ""} onClick={() => setResourceTab(r)}>{titleCase(r)}</button>)}
+                <div className="mun-action-grid">
+                  <button
+                    className="mun-action-card"
+                    onClick={() => setPage("explore")}
+                  >
+                    <span className="mun-action-icon">🌍</span>
+                    <strong>Start Simulation</strong>
+                    <span>Choose a global crisis and represent a country.</span>
+                    <span className="mun-card-arrow">Explore →</span>
+                  </button>
+
+                  <button
+                    className="mun-action-card"
+                    onClick={() => setPage("join")}
+                  >
+                    <span className="mun-action-icon">🔑</span>
+                    <strong>Join Conference</strong>
+                    <span>Enter a room code to join your conference.</span>
+                    <span className="mun-card-arrow">Join →</span>
+                  </button>
+
+                  <button
+                    className="mun-action-card"
+                    onClick={() => setPage("practice")}
+                  >
+                    <span className="mun-action-icon">🤖</span>
+                    <strong>Practice with AI</strong>
+                    <span>Prepare speeches and practise diplomacy.</span>
+                    <span className="mun-card-arrow">Practise →</span>
+                  </button>
+
+                  <button
+                    className="mun-action-card"
+                    onClick={() => setPage("results")}
+                  >
+                    <span className="mun-action-icon">🏆</span>
+                    <strong>My Results</strong>
+                    <span>Review your diplomatic journey and progress.</span>
+                    <span className="mun-card-arrow">View results →</span>
+                  </button>
+                </div>
+              </section>
+
+              <section className="mun-section">
+                <div className="mun-section-heading">
+                  <div>
+                    <span className="mun-eyebrow">THE WORLD NEEDS YOU</span>
+                    <h2>Explore global crises</h2>
                   </div>
-                  <div className="trade-list">
-                    {world.trade_routes.filter((r) => r.resource === activeResource).map((r) => (
-                      <div key={r.id} className={`trade-row ${r.active ? "" : "trade-row-cut"}`}>
-                        <span>{names[r.exporter]} → {names[r.importer]}</span>
-                        <strong>{r.active ? `${r.volume} (${r.efficiency}%)` : "Cut off"}</strong>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="trade-legend"><span><i className="legend-blue" /> Active route</span><span><i className="legend-orange" /> Cut off</span></div>
+
+                  <button
+                    className="mun-text-button"
+                    onClick={() => setPage("explore")}
+                  >
+                    View all →
+                  </button>
+                </div>
+
+                <div className="mun-scenario-grid">
+                  {scenarios.slice(0, 2).map((scenario) => (
+                    <ScenarioCard
+                      key={scenario.title}
+                      scenario={scenario}
+                      onClick={() => startSimulation(scenario)}
+                    />
+                  ))}
                 </div>
               </section>
             </>
           )}
-        </div>
-      </section>
 
-      <aside className="dashboard-right">
-        <section className="right-panel crisis-panel">
-          <div className="right-panel-heading"><h2>Ongoing Crises</h2><button onClick={() => setActivePage("Crisis Center")}>View all</button></div>
-          {visibleCrises.map((crisis) => (
-            <button className="crisis-row" key={crisis.key} onClick={() => { setSelectedId(crisis.target); setActivePage("Crisis Center"); }}>
-              <CrisisThumbnail type="sea" />
-              <span className="crisis-copy"><strong>{crisis.title}</strong><small>{crisis.description}</small></span>
-              <span className="crisis-tag crisis-red">Sanction</span>
-            </button>
-          ))}
-          {visibleCrises.length === 0 && <p className="empty-search">{world ? "No active crises." : "Waiting for the simulation…"}</p>}
-        </section>
+          {page === "explore" && (
+            <section className="mun-section">
+              <span className="mun-eyebrow">CHOOSE YOUR MISSION</span>
+              <h1 className="mun-page-title">Explore global crises</h1>
+              <p className="mun-page-description">
+                Every crisis has a different challenge. Choose one to begin
+                your diplomatic journey.
+              </p>
 
-        <section className="right-panel timeline-panel">
-          <div className="right-panel-heading"><h2>Live Session Timeline</h2><button onClick={() => setActivePage("Agenda")}>View all</button></div>
-          <div className="timeline-list">
-            {events.slice(0, 8).map((e, i) => <div className="timeline-entry" key={e.id}><time>{timeAgo(e.timestamp)}</time><span className={`timeline-node timeline-node-${i === 0 ? 0 : 1}`} /><p>{e.message}</p></div>)}
-            {events.length === 0 && <p className="empty-search">{world ? "No events yet. Take an action to see it here." : "Waiting for the simulation…"}</p>}
-          </div>
-        </section>
+              <div className="mun-scenario-grid">
+                {scenarios.map((scenario) => (
+                  <ScenarioCard
+                    key={scenario.title}
+                    scenario={scenario}
+                    onClick={() => startSimulation(scenario)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
-        <section className="right-panel responses-panel">
-          <div className="right-panel-heading"><h2>Alliances</h2><button onClick={() => setActivePage("Countries")}>View all</button></div>
-          {world && allianceNames.map((name) => {
-            const members = world.countries.filter((c) => c.alliances.includes(name));
-            return (
-              <button className="response-row" key={name} onClick={() => setSelectedId(members[0].id)}>
-                <span className="response-flag"><Handshake size={16} /></span>
-                <span><strong>{name}</strong><small>{members.map((m) => m.name).join(", ")}</small></span>
+          {page === "join" && (
+            <section className="mun-centered-page">
+              <div className="mun-feature-icon">🔑</div>
+              <span className="mun-eyebrow">YOUR CONFERENCE AWAITS</span>
+              <h1>Join a conference</h1>
+              <p>
+                Ask your conference organiser for the room code.
+              </p>
+
+              <form className="mun-join-form" onSubmit={joinConference}>
+                <label htmlFor="conference-code">Conference code</label>
+                <input
+                  id="conference-code"
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(event.target.value)}
+                  placeholder="Enter your room code"
+                  maxLength={40}
+                />
+                <button className="mun-primary-button" type="submit">
+                  Join Conference →
+                </button>
+              </form>
+
+              {message && <p className="mun-notice">{message}</p>}
+            </section>
+          )}
+
+          {page === "practice" && (
+            <section className="mun-centered-page">
+              <div className="mun-feature-icon">🤖</div>
+              <span className="mun-eyebrow">YOUR PERSONAL DIPLOMATIC COACH</span>
+              <h1>Practise with AI</h1>
+              <p>
+                Choose a crisis to practise your arguments and prepare for
+                international negotiations.
+              </p>
+
+              <div className="mun-practice-box">
+                <label htmlFor="practice-scenario">Choose a scenario</label>
+                <select
+                  id="practice-scenario"
+                  value={selectedScenario.title}
+                  onChange={(event) => {
+                    const scenario = scenarios.find(
+                      (item) => item.title === event.target.value
+                    );
+                    setSelectedScenario(scenario);
+                  }}
+                >
+                  {scenarios.map((scenario) => (
+                    <option key={scenario.title} value={scenario.title}>
+                      {scenario.title}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="mun-primary-button"
+                  onClick={() => startSimulation(selectedScenario)}
+                >
+                  Begin AI Practice →
+                </button>
+              </div>
+            </section>
+          )}
+
+          {page === "simulation" && (
+            <section className="mun-section">
+              <button
+                className="mun-text-button"
+                onClick={() => setPage("explore")}
+              >
+                ← Back to crises
               </button>
-            );
-          })}
-          {world && allianceNames.length === 0 && <p className="empty-search">No alliances.</p>}
-        </section>
 
-        <button className="change-profile-right" onClick={onChangeProfile}><ArrowLeft size={15} /> Change profile</button>
-      </aside>
-    </main>
+              <div className="mun-simulation-header">
+                <span className="mun-feature-icon">
+                  {selectedScenario.emoji}
+                </span>
+                <span className="mun-eyebrow">SIMULATION IN PROGRESS</span>
+                <h1>{selectedScenario.title}</h1>
+                <p>{selectedScenario.committee}</p>
+                <p className="mun-page-description">
+                  {selectedScenario.description}
+                </p>
+              </div>
+
+              <div className="mun-info-grid">
+                <div className="mun-info-card">
+                  <span>👤</span>
+                  <p>Your delegate</p>
+                  <strong>
+                    {profile.avatar} {profile.name}
+                  </strong>
+                </div>
+
+                <div className="mun-info-card">
+                  <span>🤖</span>
+                  <p>AI delegates</p>
+                  <strong>Ready to negotiate</strong>
+                </div>
+              </div>
+
+              <div className="mun-panel">
+                <h2>Make your opening statement</h2>
+                <p>
+                  Explain your proposed solution to the crisis. Your speech
+                  will be ready for the next stage of the simulation.
+                </p>
+
+                <form onSubmit={submitSpeech}>
+                  <textarea
+                    value={speech}
+                    onChange={(event) => setSpeech(event.target.value)}
+                    placeholder="Honourable delegates, my country believes..."
+                    rows={5}
+                  />
+
+                  <button className="mun-primary-button" type="submit">
+                    Submit Speech →
+                  </button>
+                </form>
+
+                {message && <p className="mun-notice">{message}</p>}
+              </div>
+
+              <div className="mun-panel">
+                <h2>Resolution and voting</h2>
+                <p>
+                  In a full conference, delegates draft clauses, negotiate
+                  amendments, and vote according to committee rules.
+                </p>
+
+                <button
+                  className="mun-secondary-button"
+                  onClick={() => {
+                    setVotes(null);
+                    setPage("results");
+                  }}
+                >
+                  View Demo Outcome →
+                </button>
+              </div>
+            </section>
+          )}
+
+          {page === "results" && (
+            <section className="mun-centered-page">
+              <div className="mun-feature-icon">🏆</div>
+              <span className="mun-eyebrow">YOUR DIPLOMATIC JOURNEY</span>
+              <h1>My Results</h1>
+              <p>
+                Your conference reports and performance feedback will appear
+                here as you complete simulations.
+              </p>
+
+              <div className="mun-results-card">
+                <span className="mun-result-emoji">🌍</span>
+                <h2>Ready to make history?</h2>
+                <p>
+                  Complete a simulation to build your diplomatic portfolio.
+                </p>
+
+                <button
+                  className="mun-primary-button"
+                  onClick={() => setPage("explore")}
+                >
+                  Start a Simulation →
+                </button>
+              </div>
+            </section>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioCard({ scenario, onClick }) {
+  return (
+    <button className="mun-scenario-card" onClick={onClick}>
+      <span className="mun-scenario-emoji">{scenario.emoji}</span>
+      <span className="mun-scenario-level">{scenario.level}</span>
+      <h3>{scenario.title}</h3>
+      <p>{scenario.description}</p>
+      <span className="mun-scenario-committee">{scenario.committee}</span>
+      <span className="mun-card-arrow">Enter crisis →</span>
+    </button>
   );
 }
 
 export default function App() {
-  const [role, setRole] = useState(null);
-  const sim = useSimulation();
+  const [profile, setProfile] = useState(initialProfile);
 
-  function changeProfile() {
-    setRole(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  function handleEnter(newProfile) {
+    localStorage.setItem("munProfile", JSON.stringify(newProfile));
+    setProfile(newProfile);
+  }
+
+  function handleChangeProfile() {
+    localStorage.removeItem("munProfile");
+    setProfile(null);
+  }
+
+  if (!profile) {
+    return <NameEntry onEnter={handleEnter} />;
   }
 
   return (
-    <div className="app-root">
-      {role ? (
-        <Dashboard key={role.id} role={role} onChangeProfile={changeProfile} sim={sim} />
-      ) : (
-        <RoleSelection onSelect={setRole} />
-      )}
-    </div>
+    <Dashboard
+      profile={profile}
+      onChangeProfile={handleChangeProfile}
+    />
   );
 }
