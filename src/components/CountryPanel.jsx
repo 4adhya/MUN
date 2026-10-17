@@ -32,6 +32,18 @@ export default function CountryPanel({ world, countryId, canAct, actorId, onActo
   const routes = world.trade_routes.filter((r) => r.exporter === country.id || r.importer === country.id);
   const relationships = Object.entries(country.relationships).sort((a, b) => b[1] - a[1]);
   const actingOnSelf = actorId === country.id;
+  const latestAction =
+    sim.lastAction?.event?.target === country.id
+     ? sim.lastAction
+     : null;
+
+  const event = latestAction?.event;
+  const effects = event?.effects ?? {};
+
+  const showGDP = (change) =>
+    change
+     ? `${Number(change.before).toFixed(2)}B → ${Number(change.after).toFixed(2)}B`
+     : "—";
   const amountNumber = Number(amount);
   const amountValid = amount.trim() !== "" && Number.isFinite(amountNumber) && amountNumber > 0;
 
@@ -100,6 +112,81 @@ export default function CountryPanel({ world, countryId, canAct, actorId, onActo
         </div>
       ) : (
         <p className="panel-note">Guests can observe only. Choose the Participant or Jury role to take actions.</p>
+      )}
+            {event && (
+        <div className="action-impact" role="status">
+          <h3>Action Impact</h3>
+          <p className="impact-message">{event.message}</p>
+
+          {event.type === "aid" && (
+            <>
+              <p>
+                <b>Aid transferred:</b> {effects.amount}B
+              </p>
+              <p>
+                <b>{latestAction.actor.name} GDP:</b>{" "}
+                {showGDP(effects.actor_gdp)}
+              </p>
+              <p>
+                <b>{latestAction.target.name} GDP:</b>{" "}
+                {showGDP(effects.target_gdp)}
+              </p>
+              <p>
+                <b>Target stability:</b>{" "}
+                {effects.target_stability.before} →{" "}
+                {effects.target_stability.after} / 100
+              </p>
+              <p>
+                <b>Relationship score:</b> {effects.relationship} / 100
+              </p>
+            </>
+          )}
+
+          {event.type === "sanction" && (
+            <>
+              <p>
+                <b>Target GDP:</b> {showGDP(effects.target_gdp)}
+              </p>
+              <p>
+                <b>Target stability:</b>{" "}
+                {effects.target_stability.before} →{" "}
+                {effects.target_stability.after} / 100
+              </p>
+              <p>
+                <b>Relationship score:</b> {effects.relationship} / 100
+              </p>
+              <p>
+                <b>Trade routes cut:</b>{" "}
+                {effects.trade_routes_deactivated?.length ?? 0}
+              </p>
+            </>
+          )}
+
+          {event.type === "alliance" && (
+            <>
+              <p>
+                <b>Alliance:</b> {effects.alliance}
+              </p>
+              <p>
+                <b>{latestAction.actor.name} stability:</b>{" "}
+                {effects.stability?.[latestAction.actor.id]?.before} →{" "}
+                {effects.stability?.[latestAction.actor.id]?.after} / 100
+              </p>
+              <p>
+                <b>{latestAction.target.name} stability:</b>{" "}
+                {effects.stability?.[latestAction.target.id]?.before} →{" "}
+                {effects.stability?.[latestAction.target.id]?.after} / 100
+              </p>
+              <p>
+                <b>Relationship score:</b> {effects.relationship} / 100
+              </p>
+              <p>
+                <b>Trade routes affected:</b>{" "}
+                {Object.keys(effects.trade_routes_boosted ?? {}).length}
+              </p>
+            </>
+          )}
+        </div>
       )}
     </section>
   );

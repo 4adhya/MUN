@@ -7,7 +7,17 @@ Routes only: all game logic lives in simulation.py / rules.py.
 """
 import logging
 import os
+import sys
+from pathlib import Path
 
+AI_DIR = Path(__file__).resolve().parent.parent / "ai"
+
+if str(AI_DIR) not in sys.path:
+    sys.path.insert(0, str(AI_DIR))
+
+from pydantic import BaseModel, Field
+from ai.country_agent import AureliaAgent
+from ai.fallback import decide_with_fallback
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -116,6 +126,25 @@ def health() -> dict:
 )
 def get_world() -> WorldState:
     return simulation.world
+
+class AIProposalRequest(BaseModel):
+    situation: str = Field(min_length=1, max_length=1000)
+
+
+@app.post("/ai/propose", tags=["AI"], summary="Ask Aurelia for a diplomatic proposal")
+def propose_ai_action(req: AIProposalRequest) -> dict:
+    """Generate a proposal from the current world state without executing it."""
+    world = simulation.world
+    agent = AureliaAgent()
+    outcome = decide_with_fallback(agent, req.situation, world)
+
+    return {
+        "source": outcome.source,
+        "used_fallback": outcome.is_fallback,
+        "error_code": outcome.error_code,
+        "error": outcome.error,
+        "decision": outcome.decision.model_dump(mode="json"),
+    }
 
 
 @app.get(

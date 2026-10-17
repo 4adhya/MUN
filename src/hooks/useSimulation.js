@@ -10,6 +10,7 @@ export function useSimulation() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false); // an action/reset is in flight
   const [notice, setNotice] = useState(null); // { kind: "success" | "error", text }
+  const [lastAction, setLastAction] = useState(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -46,10 +47,14 @@ export function useSimulation() {
   const run = useCallback(async (call, successText) => {
     setBusy(true);
     setNotice(null);
+    setLastAction(null);
     try {
       const result = await call();
       await load();
-      if (mounted.current) setNotice({ kind: "success", text: successText(result) });
+      if (mounted.current) {
+        setLastAction(result?.event?.effects ? result : null);
+        setNotice({ kind: "success", text: successText(result) });
+      }
       return true;
     } catch (err) {
       if (mounted.current) setNotice({ kind: "error", text: err.message });
@@ -72,5 +77,18 @@ export function useSimulation() {
 
   const reset = useCallback(() => run(() => api.resetSimulation(), () => "Simulation reset to its starting state."), [run]);
 
-  return { world, events, status, error, busy, notice, dismissNotice: () => setNotice(null), act, reset, reload: load, retry };
+  return {
+    world,
+    events,
+    status,
+    error,
+    busy,
+    notice,
+    lastAction,
+    dismissNotice: () => setNotice(null),
+    act,
+    reset,
+    reload: load,
+    retry,
+  };
 }

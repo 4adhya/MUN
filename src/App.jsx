@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSimulation } from "./hooks/useSimulation.js";
 import WorldMap from "./components/WorldMap.jsx";
 import CountryPanel from "./components/CountryPanel.jsx";
@@ -209,7 +209,16 @@ function Dashboard({ role, onChangeProfile, sim }) {
     : [];
   const visibleCrises = crises.filter((c) => `${c.title} ${c.description}`.toLowerCase().includes(term));
   const visibleCountries = world ? [...world.countries].filter((c) => c.name.toLowerCase().includes(term)).sort((a, b) => b.gdp - a.gdp) : [];
+  const countryPanelRef = useRef(null);
 
+    useEffect(() => {
+      if (!selectedId || !countryPanelRef.current) return;
+
+      countryPanelRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, [selectedId]);
   const selectCountry = (id) => setSelectedId(id);
 
   function handleReset() {
@@ -333,15 +342,17 @@ function Dashboard({ role, onChangeProfile, sim }) {
               </section>
 
               {selectedId && (
-                <CountryPanel
-                  world={world}
-                  countryId={selectedId}
-                  canAct={!isGuest}
-                  actorId={actorId}
-                  onActorChange={setActorId}
-                  sim={sim}
-                  onClose={() => setSelectedId("")}
-                />
+             <div ref={countryPanelRef} className="country-panel-scroll-target">
+              <CountryPanel
+                world={world}
+                countryId={selectedId}
+                canAct={!isGuest}
+                actorId={actorId}
+                onActorChange={setActorId}
+                sim={sim}
+                onClose={() => setSelectedId("")}
+              />
+              </div>
               )}
 
               <section className="stat-grid">
