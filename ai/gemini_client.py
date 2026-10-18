@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 
-from check_gemini import (
+from ai.check_gemini import (
     DEFAULT_MODEL,
     EXIT_CONFIG,
     REPO_ROOT,

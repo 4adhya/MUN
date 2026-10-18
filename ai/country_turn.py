@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from backend.simulation import Simulation
 from backend.simulation import simulation as shared_simulation
-from country_agent import LLM, AureliaAgent, CountryAgent, CountryDecision
+from ai.country_agent import LLM, AureliaAgent, CountryAgent, CountryDecision
 from fallback import decide_with_fallback
 from simulation_bridge import BridgeResult, execute_decision
 

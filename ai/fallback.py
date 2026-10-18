@@ -17,7 +17,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
-from country_agent import MAX_SITUATION_CHARS, CountryAgent, CountryDecision, Decision
+from ai.country_agent import MAX_SITUATION_CHARS, CountryAgent, CountryDecision, Decision
 
 FALLBACK_REASON = (
     "AI decision service is temporarily unavailable, so {country} is taking no action "

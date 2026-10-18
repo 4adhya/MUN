@@ -20,7 +20,7 @@ from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator, model_validator
 
-from check_gemini import CheckError  # Phase 1 error type (its message never contains the key)
+from ai.check_gemini import CheckError  # Phase 1 error type (its message never contains the key)
 
 MAX_SITUATION_CHARS = 1000
 MAX_RAW_ECHO_CHARS = 500
@@ -282,7 +282,7 @@ class CountryAgent:
     def __init__(self, profile: AgentProfile, llm: Optional[LLM] = None) -> None:
         self.profile = profile
         if llm is None:
-            from gemini_client import generate_json_text  # no key is needed until propose() is called
+            from ai.gemini_client import generate_json_text  # no key is needed until propose() is called
 
             llm = generate_json_text
         self._llm = llm

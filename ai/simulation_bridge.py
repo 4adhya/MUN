@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from backend.rules import ActionError
 from backend.simulation import Simulation
 from backend.simulation import simulation as shared_simulation
-from country_agent import CountryDecision, Decision
+from ai.country_agent import CountryDecision, Decision
 
 logger = logging.getLogger("mun.ai")
 
