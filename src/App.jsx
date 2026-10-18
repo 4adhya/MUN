@@ -10,17 +10,9 @@ import {
 import "./App.css";
 import WorldMap from "./components/WorldMap";
 import ConferenceRoom from "./components/ConferenceRoom";
+import { getAllCountryProfiles } from "./data/countries.js";
 
-const countries = [
-  { name: "India", flag: "🇮🇳", capital: "New Delhi", population: "1.43B", economy: "Emerging", military: "Strong", stability: 74, color: "#f59e0b", gdp: "$3.9T", role: "Regional power", x: 66, y: 48 },
-  { name: "United States", flag: "🇺🇸", capital: "Washington, D.C.", population: "335M", economy: "Very strong", military: "Very strong", stability: 82, color: "#60a5fa", gdp: "$28.8T", role: "Global superpower", x: 22, y: 36 },
-  { name: "China", flag: "🇨🇳", capital: "Beijing", population: "1.41B", economy: "Very strong", military: "Very strong", stability: 77, color: "#ef4444", gdp: "$18.7T", role: "Global power", x: 73, y: 39 },
-  { name: "France", flag: "🇫🇷", capital: "Paris", population: "68M", economy: "Strong", military: "Strong", stability: 79, color: "#818cf8", gdp: "$3.2T", role: "European power", x: 49, y: 33 },
-  { name: "United Kingdom", flag: "🇬🇧", capital: "London", population: "68M", economy: "Strong", military: "Strong", stability: 78, color: "#a78bfa", gdp: "$3.6T", role: "Global power", x: 47, y: 28 },
-  { name: "Russia", flag: "🇷🇺", capital: "Moscow", population: "144M", economy: "Resource-based", military: "Very strong", stability: 61, color: "#fb7185", gdp: "$2.2T", role: "Global power", x: 64, y: 24 },
-  { name: "Japan", flag: "🇯🇵", capital: "Tokyo", population: "124M", economy: "Very strong", military: "Moderate", stability: 85, color: "#f472b6", gdp: "$4.0T", role: "Economic power", x: 83, y: 41 },
-  { name: "Brazil", flag: "🇧🇷", capital: "Brasília", population: "216M", economy: "Emerging", military: "Moderate", stability: 68, color: "#34d399", gdp: "$2.2T", role: "Regional power", x: 34, y: 69 },
-];
+const featuredCountries = []; // Country profiles are loaded dynamically from countries.js.
 
 const initialEvents = [
   { type: "alert", title: "Trade tensions rising", detail: "Major economies are reviewing trade restrictions.", time: "2 min ago" },
@@ -69,7 +61,7 @@ function WorldGraphic({ selected, onSelect, large = false }) {
           {land.map((d, i) => <path key={i} d={d} />)}
         </g>
 
-        {countries.map((c) => {
+        {featuredCountries.map((c) => {
           const active = selected === c.name;
           const showLabel = large || active || hovered === c.name;
           const x = c.x * 8;
@@ -185,7 +177,7 @@ function RotatingEarth() {
         arcDashLength={0.35}
         arcDashGap={0.2}
         arcDashAnimateTime={2400}
-        pointsData={countries.map((c) => ({
+        pointsData={featuredCountries.map((c) => ({
           lat: ({ India: 28.6, "United States": 38.9, China: 39.9, France: 48.8, "United Kingdom": 51.5, Russia: 55.8, Japan: 35.7, Brazil: -15.8 })[c.name],
           lng: ({ India: 77.2, "United States": -77, China: 116.4, France: 2.3, "United Kingdom": -.1, Russia: 37.6, Japan: 139.7, Brazil: -47.9 })[c.name],
           name: c.name,
@@ -233,6 +225,62 @@ function MiniBars({ value, color = "blue" }) {
   return <div className="mini-track"><span className={color} style={{ width: `${value}%` }} /></div>;
 }
 
+
+const COUNTRY_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#a78bfa", "#fb7185", "#38bdf8"];
+
+function flagEmojiFromCode(code = "") {
+  if (!/^[A-Z]{2}$/.test(code)) return "🌐";
+  return [...code].map((letter) => String.fromCodePoint(127397 + letter.charCodeAt(0))).join("");
+}
+
+function canonicalCountryName(name = "") {
+  const aliases = {
+    "United States of America": "United States",
+    "Russian Federation": "Russia",
+    "Türkiye": "Turkey",
+    "Republic of Korea": "South Korea",
+    "Korea, Republic of": "South Korea",
+    "Democratic People's Republic of Korea": "North Korea",
+    "Czechia": "Czechia",
+  };
+  return aliases[name] || name;
+}
+
+function buildCountryList(profiles) {
+  const featuredByName = new globalThis.Map(featuredCountries.map((country) => [country.name, country]));
+
+  return profiles.map((profile, index) => {
+    const name = canonicalCountryName(profile.name);
+    const featured = featuredByName.get(name);
+    return {
+      ...featured,
+      id: profile.id,
+      code: profile.code,
+      iso3: profile.iso3,
+      name,
+      officialName: profile.officialName,
+      flag: flagEmojiFromCode(profile.code),
+      flagImage: profile.flag,
+      capital: profile.capital,
+      population: profile.populationLabel,
+      populationValue: profile.population,
+      region: profile.region,
+      subregion: profile.subregion,
+      area: profile.areaLabel,
+      currency: profile.currencyLabel,
+      languages: profile.languageLabel,
+      economy: featured?.economy || "Not rated",
+      military: featured?.military || "Not rated",
+      stability: featured?.stability ?? 50,
+      color: featured?.color || COUNTRY_COLORS[index % COUNTRY_COLORS.length],
+      gdp: featured?.gdp || "Not available",
+      role: featured?.role || profile.subregion || profile.region || "Country profile",
+      x: featured?.x ?? 50,
+      y: featured?.y ?? 50,
+    };
+  });
+}
+
 export default function App() {
   const [screen, setScreen] = useState("landing");
   const [countryName, setCountryName] = useState("India");
@@ -247,10 +295,65 @@ export default function App() {
   const [showAdvisor, setShowAdvisor] = useState(false);
   const [notice, setNotice] = useState("");
   const [turn, setTurn] = useState(1);
+  const [countryList, setCountryList] = useState([]);
+  const [countryDataLoading, setCountryDataLoading] = useState(true);
+  const [countryDataError, setCountryDataError] = useState("");
 
-  const country = countries.find((c) => c.name === countryName) || countries[0];
-  const targetCountry = countries.find((c) => c.name === target) || countries[2];
-  const filteredCountries = countries.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+  useEffect(() => {
+    let cancelled = false;
+    getAllCountryProfiles()
+      .then((profiles) => {
+        if (!cancelled) {
+          setCountryList(buildCountryList(profiles));
+          setCountryDataError("");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCountryDataError(error?.message || "Country data could not be loaded.");
+          setCountryList([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCountryDataLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleCountrySelect = (name) => {
+    const normalized = canonicalCountryName(name);
+    const match = countryList.find((item) => item.name === normalized);
+    setCountryName(match?.name || normalized);
+  };
+
+  // If the country API is unavailable or a map feature is not in its response,
+  // still show the country that was clicked instead of silently reverting to India.
+  const country = countryList.find((c) => c.name === countryName) || {
+    name: countryName,
+    officialName: countryName,
+    flag: "🌐",
+    flagImage: "",
+    capital: "Not available",
+    population: "Not available",
+    region: "Not available",
+    subregion: "Not available",
+    area: "Not available",
+    currency: "Not available",
+    languages: "Not available",
+    economy: "Not rated",
+    military: "Not rated",
+    stability: 50,
+    color: "#38bdf8",
+    gdp: "Not available",
+    role: "Country profile",
+  };
+  const targetCountry = countryList.find((c) => c.name === target) || countryList.find((c) => c.name !== country.name) || countryList[0] || country;
+  const filteredCountries = countryList.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.officialName?.toLowerCase().includes(query.toLowerCase()));
+  useEffect(() => {
+    if (countryList.length && !countryList.some((c) => c.name === target)) {
+      setTarget(countryList.find((c) => c.name !== country.name)?.name || countryList[0].name);
+    }
+  }, [countryList, target, country.name]);
 
   function openGame() {
     setScreen("select");
@@ -357,18 +460,24 @@ export default function App() {
               <div className="explore-map">
                 <WorldMap
   selectedCountry={countryName}
-  onCountrySelect={setCountryName}
+  onCountrySelect={handleCountrySelect}
   height={480}
 />
                 <div className="explore-map-hint"><span className="live-indicator" /> HOVER OVER A COUNTRY · CLICK TO EXPLORE</div>
               </div>
               <div className="explore-country-panel">
                 <span className="eyebrow">COUNTRY SPOTLIGHT</span>
+                {countryDataError && <p className="panel-note">Country database could not load. Clicked country is shown, but full facts need an internet connection. {countryDataError}</p>}
+                {countryDataLoading && <p className="panel-note">Loading country profiles…</p>}
                 <div className="explore-flag">{country.flag}</div>
                 <h3>{country.name}</h3>
                 <p>{country.role}</p>
-                <div className="explore-stat"><span>Capital</span><b>{country.capital}</b></div>
-                <div className="explore-stat"><span>Population</span><b>{country.population}</b></div>
+                <div className="explore-stat"><span>Capital</span><b>{country.capital || "Not available"}</b></div>
+                <div className="explore-stat"><span>Population</span><b>{country.population || "Not available"}</b></div>
+                <div className="explore-stat"><span>Region</span><b>{country.subregion || country.region || "Not available"}</b></div>
+                <div className="explore-stat"><span>Currency</span><b>{country.currency || "Not available"}</b></div>
+                <div className="explore-stat"><span>Languages</span><b>{country.languages || "Not available"}</b></div>
+                <div className="explore-stat"><span>Area</span><b>{country.area || "Not available"}</b></div>
                 <div className="explore-stat"><span>Economic position</span><b>{country.economy}</b></div>
                 <div className="explore-stat"><span>Stability index</span><b>{country.stability}/100</b></div>
                 <MiniBars value={country.stability} color="green" />
@@ -401,22 +510,24 @@ export default function App() {
           <div className="page-heading"><div><span className="eyebrow">STEP 01 / DELEGATION</span><h1>Choose your country</h1><p>Select a nation to begin your diplomatic journey.</p></div><span className="step-pill">01 <span>/ 04</span></span></div>
           <div className="selection-layout">
             <section className="panel country-picker">
-              <div className="panel-heading"><div><h2>Available delegations</h2><p>Choose the country you will represent.</p></div><span className="count-pill">{countries.length} COUNTRIES</span></div>
+              <div className="panel-heading"><div><h2>Available delegations</h2><p>Choose the country you will represent.</p></div><span className="count-pill">{countryList.length} COUNTRIES</span></div>
               <label className="search-box"><Search size={17} /><input placeholder="Search countries..." value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+              {countryDataLoading && <p className="panel-note">Loading country profiles…</p>}
+              {countryDataError && <p className="panel-note">Could not load the full country dataset. Showing available fallback profiles. {countryDataError}</p>}
               <div className="country-list">
                 {filteredCountries.map((c) => (
-                  <button key={c.name} className={`country-option ${countryName === c.name ? "selected" : ""}`} onClick={() => setCountryName(c.name)}>
+                  <button key={c.name} className={`country-option ${countryName === c.name ? "selected" : ""}`} onClick={() => handleCountrySelect(c.name)}>
                     <span className="flag">{c.flag}</span><span className="country-option-copy"><b>{c.name}</b><small>{c.role}</small></span><span className="country-status"><i style={{ background: c.color }} />{countryName === c.name ? "Selected" : "Available"}</span>{countryName === c.name && <Check size={16} />}
                   </button>
                 ))}
               </div>
-              <div className="picker-footer"><Shield size={15} /> Country data is illustrative for this simulation.</div>
+              <div className="picker-footer"><Shield size={15} /> Country profiles use public country facts; simulation ratings are illustrative.</div>
             </section>
             <section className="panel map-selection">
               <div className="panel-heading"><div><h2>Explore the world</h2><p>Select a highlighted country or use the list.</p></div><span className="map-live"><i /> MAP VIEW</span></div>
               <WorldMap
   selectedCountry={countryName}
-  onCountrySelect={setCountryName}
+  onCountrySelect={handleCountrySelect}
   height={520}
 />
               <div className="selected-country-card"><span className="flag flag-large">{country.flag}</span><div><small>YOUR DELEGATION</small><h3>{country.name}</h3><p>{country.capital} · {country.role}</p></div><button className="button" onClick={enterGame}>Enter simulation <ArrowRight size={16} /></button></div>
@@ -451,7 +562,7 @@ export default function App() {
               <div className="dashboard-grid">
                 <section className="panel map-panel"><div className="panel-heading"><div><h2>Geopolitical overview</h2><p>Country positions and regional activity</p></div><button className="text-link" onClick={() => setTab("map")}>Full map <ArrowRight size={14} /></button></div><WorldMap
   selectedCountry={countryName}
-  onCountrySelect={setCountryName}
+  onCountrySelect={handleCountrySelect}
   height={350}
 /><div className="map-summary"><span><i className="legend-dot friendly" /> Partners</span><span><i className="legend-dot neutral" /> Neutral</span><span><i className="legend-dot hostile" /> Tensions</span></div></section>
                 <section className="panel status-panel"><div className="panel-heading"><div><h2>National status</h2><p>{country.flag} {country.name}</p></div><button className="icon-button" onClick={() => setTab("countries")}><ArrowRight size={15} /></button></div><div className="status-line"><span>Economic strength</span><b>{country.economy}</b></div><MiniBars value={78} /><div className="status-line"><span>Military capability</span><b>{country.military}</b></div><MiniBars value={72} color="purple" /><div className="status-line"><span>Domestic stability</span><b>{country.stability}/100</b></div><MiniBars value={country.stability} color="green" /><div className="status-divider" /><div className="status-line"><span>Population</span><b>{country.population}</b></div><div className="status-line"><span>GDP (approx.)</span><b>{country.gdp}</b></div></section>
@@ -467,11 +578,11 @@ export default function App() {
 
             {tab === "map" && <section className="panel full-map-panel"><div className="panel-heading"><div><h2>World map</h2><p>Hover or select a highlighted country.</p></div></div><WorldMap
   selectedCountry={countryName}
-  onCountrySelect={setCountryName}
+  onCountrySelect={handleCountrySelect}
   height={520}
-/><div className="country-chips">{countries.map((c) => <button key={c.name} className={countryName === c.name ? "active" : ""} onClick={() => setCountryName(c.name)}>{c.flag} {c.name}</button>)}</div></section>}
+/><div className="country-chips">{countryList.map((c) => <button key={c.name} className={countryName === c.name ? "active" : ""} onClick={() => handleCountrySelect(c.name)}>{c.flag} {c.name}</button>)}</div></section>}
 
-            {tab === "countries" && <section className="panel"><div className="panel-heading"><div><h2>Country intelligence</h2><p>Explore national profiles and strategic positions.</p></div><label className="search-box compact"><Search size={16} /><input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div><div className="country-table">{filteredCountries.map((c) => <button key={c.name} className="country-table-row" onClick={() => setCountryName(c.name)}><span className="flag">{c.flag}</span><span><b>{c.name}</b><small>{c.role}</small></span><span><small>ECONOMY</small><b>{c.economy}</b></span><span><small>STABILITY</small><MiniBars value={c.stability} /></span><span className="table-arrow"><ArrowRight size={16} /></span></button>)}</div><div className="profile-detail"><span className="flag flag-large">{country.flag}</span><div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2><p>{country.capital} · {country.population} people · GDP {country.gdp}</p></div><span className="status-chip">{country.role}</span></div></section>}
+            {tab === "countries" && <section className="panel"><div className="panel-heading"><div><h2>Country intelligence</h2><p>Explore national profiles and strategic positions.</p></div><label className="search-box compact"><Search size={16} /><input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div><div className="country-table">{filteredCountries.map((c) => <button key={c.name} className="country-table-row" onClick={() => handleCountrySelect(c.name)}><span className="flag">{c.flag}</span><span><b>{c.name}</b><small>{c.role}</small></span><span><small>ECONOMY</small><b>{c.economy}</b></span><span><small>STABILITY</small><MiniBars value={c.stability} /></span><span className="table-arrow"><ArrowRight size={16} /></span></button>)}</div><div className="profile-detail"><span className="flag flag-large">{country.flag}</span><div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2><p>{country.capital} · {country.population} people · GDP {country.gdp}</p></div><span className="status-chip">{country.role}</span></div></section>}
 
             {tab === "events" && <section className="panel"><div className="panel-heading"><div><h2>Diplomatic events</h2><p>A timeline of activity in your simulation.</p></div><span className="count-pill">{events.length} EVENTS</span></div><div className="event-list event-list-large">{events.map((e, i) => <div className="event-row" key={`${e.title}-${i}`}><span className={`event-icon ${e.type}`}>{e.type === "alert" ? <AlertTriangle size={17} /> : <Handshake size={17} />}</span><div><b>{e.title}</b><p>{e.detail}</p><small>{e.time} · Practice simulation</small></div></div>)}</div></section>}
 
@@ -483,11 +594,11 @@ export default function App() {
         </div>
       )}
 
-      {screen === "result" && <main className="result-screen"><div className="result-card"><div className="result-check"><Check size={28} /></div><span className="eyebrow">ACTION RECORDED / PRACTICE MODE</span><h1>{actionResult?.title || "Action recorded"}</h1><p>{actionResult?.description}</p><div className="result-impact"><div><span>TARGET</span><b>{countries.find((c) => c.name === actionResult?.target)?.flag} {actionResult?.target}</b></div><div><span>ACTION TYPE</span><b>{actionResult?.reason}</b></div><div><span>SIMULATION TURN</span><b>{String(turn).padStart(2, "0")}</b></div></div><div className="notice-box"><AlertTriangle size={17} /><p>This is a frontend demonstration. It does not apply real sanctions or change real-world events.</p></div><div className="result-actions"><button className="button button-secondary" onClick={() => { setScreen("game"); setTab("dashboard"); }}>Return to dashboard</button><button className="button" onClick={() => { setScreen("game"); setTab("map"); }}>View world map <ArrowRight size={16} /></button></div></div></main>}
+      {screen === "result" && <main className="result-screen"><div className="result-card"><div className="result-check"><Check size={28} /></div><span className="eyebrow">ACTION RECORDED / PRACTICE MODE</span><h1>{actionResult?.title || "Action recorded"}</h1><p>{actionResult?.description}</p><div className="result-impact"><div><span>TARGET</span><b>{countryList.find((c) => c.name === actionResult?.target)?.flag} {actionResult?.target}</b></div><div><span>ACTION TYPE</span><b>{actionResult?.reason}</b></div><div><span>SIMULATION TURN</span><b>{String(turn).padStart(2, "0")}</b></div></div><div className="notice-box"><AlertTriangle size={17} /><p>This is a frontend demonstration. It does not apply real sanctions or change real-world events.</p></div><div className="result-actions"><button className="button button-secondary" onClick={() => { setScreen("game"); setTab("dashboard"); }}>Return to dashboard</button><button className="button" onClick={() => { setScreen("game"); setTab("map"); }}>View world map <ArrowRight size={16} /></button></div></div></main>}
 
       {showAdvisor && screen === "game" && <aside className="advisor-drawer"><div className="advisor-header"><div className="advisor-avatar"><MessageSquare size={18} /></div><div><b>Diplomatic advisor</b><small>UI preview · AI paused</small></div><button className="icon-button" onClick={() => setShowAdvisor(false)}><X size={17} /></button></div><div className="advisor-message"><span className="eyebrow">STRATEGIC NOTE</span><p>Review your delegation's interests, assess potential consequences, and consider whether negotiation or pressure best serves your objectives.</p></div><div className="advisor-suggestion"><b>Questions to consider</b><ul><li>What outcome matters most to your country?</li><li>How might the target country respond?</li><li>Could negotiation achieve the same goal?</li></ul></div><form className="advisor-form" onSubmit={(e) => { e.preventDefault(); setNotice("Advisor chat will be connected in a later phase."); setAdvisorQuestion(""); }}><input placeholder="Ask your advisor..." value={advisorQuestion} onChange={(e) => setAdvisorQuestion(e.target.value)} /><button className="button button-icon" aria-label="Send question"><Send size={16} /></button></form></aside>}
 
-      {modal && <div className="modal-backdrop" onClick={() => setModal("")}><section className="action-modal" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">DIPLOMATIC ACTION / CONFIGURATION</span><h2>{modal === "sanctions" ? "Propose sanctions" : modal === "alliance" ? "Form an alliance" : modal === "aid" ? "Send assistance" : "Open negotiations"}</h2></div><button className="icon-button" onClick={() => setModal("")}><X size={18} /></button></div><p className="modal-description">Configure your proposal. This demo records your selection locally.</p><label className="form-label">Target country</label><div className="select-wrap"><span className="flag">{targetCountry.flag}</span><select value={target} onChange={(e) => setTarget(e.target.value)}>{countries.filter((c) => c.name !== country.name).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select><ChevronDown size={16} /></div><label className="form-label">Policy objective</label><div className="reason-options">{["Economic","Diplomatic","Security"].map((r) => <button key={r} className={reason === r ? "active" : ""} onClick={() => setReason(r)}>{r}</button>)}</div><div className="consequence-preview"><span className="eyebrow">CONSIDER BEFORE ACTING</span><p>{modal === "sanctions" ? "Sanctions can increase pressure but may also damage trade and diplomatic relations." : modal === "alliance" ? "An alliance can strengthen cooperation but may create new commitments." : modal === "aid" ? "Assistance can build trust and support stability but requires resources." : "Negotiations can reduce tensions but may require compromise."}</p></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setModal("")}>Cancel</button><button className="button" onClick={() => submitAction(modal)}>{modal === "sanctions" ? "Submit proposal" : modal === "alliance" ? "Propose alliance" : modal === "aid" ? "Send proposal" : "Request talks"} <ArrowRight size={16} /></button></div></section></div>}
+      {modal && <div className="modal-backdrop" onClick={() => setModal("")}><section className="action-modal" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">DIPLOMATIC ACTION / CONFIGURATION</span><h2>{modal === "sanctions" ? "Propose sanctions" : modal === "alliance" ? "Form an alliance" : modal === "aid" ? "Send assistance" : "Open negotiations"}</h2></div><button className="icon-button" onClick={() => setModal("")}><X size={18} /></button></div><p className="modal-description">Configure your proposal. This demo records your selection locally.</p><label className="form-label">Target country</label><div className="select-wrap"><span className="flag">{targetCountry.flag}</span><select value={target} onChange={(e) => setTarget(e.target.value)}>{countryList.filter((c) => c.name !== country.name).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select><ChevronDown size={16} /></div><label className="form-label">Policy objective</label><div className="reason-options">{["Economic","Diplomatic","Security"].map((r) => <button key={r} className={reason === r ? "active" : ""} onClick={() => setReason(r)}>{r}</button>)}</div><div className="consequence-preview"><span className="eyebrow">CONSIDER BEFORE ACTING</span><p>{modal === "sanctions" ? "Sanctions can increase pressure but may also damage trade and diplomatic relations." : modal === "alliance" ? "An alliance can strengthen cooperation but may create new commitments." : modal === "aid" ? "Assistance can build trust and support stability but requires resources." : "Negotiations can reduce tensions but may require compromise."}</p></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setModal("")}>Cancel</button><button className="button" onClick={() => submitAction(modal)}>{modal === "sanctions" ? "Submit proposal" : modal === "alliance" ? "Propose alliance" : modal === "aid" ? "Send proposal" : "Request talks"} <ArrowRight size={16} /></button></div></section></div>}
       {notice && <div className="toast">{notice}<button onClick={() => setNotice("")}><X size={14} /></button></div>}
     </div>
   );

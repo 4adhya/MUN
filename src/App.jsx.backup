@@ -1,0 +1,558 @@
+
+import { useState } from "react";
+import NameEntry from "./components/NameEntry";
+import PageTransition from "./components/PageTransition";
+import "./App.css";
+import WorldMap from "./components/WorldMap";
+
+const countries = [
+  { name: "India", flag: "🇮🇳", capital: "New Delhi", population: "1.43B", economy: "Emerging", military: "Strong", stability: 74, color: "#f59e0b", gdp: "$3.9T", role: "Regional power", x: 66, y: 48 },
+  { name: "United States", flag: "🇺🇸", capital: "Washington, D.C.", population: "335M", economy: "Very strong", military: "Very strong", stability: 82, color: "#60a5fa", gdp: "$28.8T", role: "Global superpower", x: 22, y: 36 },
+  { name: "China", flag: "🇨🇳", capital: "Beijing", population: "1.41B", economy: "Very strong", military: "Very strong", stability: 77, color: "#ef4444", gdp: "$18.7T", role: "Global power", x: 73, y: 39 },
+  { name: "France", flag: "🇫🇷", capital: "Paris", population: "68M", economy: "Strong", military: "Strong", stability: 79, color: "#818cf8", gdp: "$3.2T", role: "European power", x: 49, y: 33 },
+  { name: "United Kingdom", flag: "🇬🇧", capital: "London", population: "68M", economy: "Strong", military: "Strong", stability: 78, color: "#a78bfa", gdp: "$3.6T", role: "Global power", x: 47, y: 28 },
+  { name: "Russia", flag: "🇷🇺", capital: "Moscow", population: "144M", economy: "Resource-based", military: "Very strong", stability: 61, color: "#fb7185", gdp: "$2.2T", role: "Global power", x: 64, y: 24 },
+  { name: "Japan", flag: "🇯🇵", capital: "Tokyo", population: "124M", economy: "Very strong", military: "Moderate", stability: 85, color: "#f472b6", gdp: "$4.0T", role: "Economic power", x: 83, y: 41 },
+  { name: "Brazil", flag: "🇧🇷", capital: "Brasília", population: "216M", economy: "Emerging", military: "Moderate", stability: 68, color: "#34d399", gdp: "$2.2T", role: "Regional power", x: 34, y: 69 },
+];
+
+const initialEvents = [
+  { type: "alert", title: "Trade tensions rising", detail: "Major economies are reviewing trade restrictions.", time: "2 min ago" },
+  { type: "deal", title: "Diplomatic talks proposed", detail: "A proposal for emergency talks is circulating.", time: "8 min ago" },
+  { type: "info", title: "Security briefing updated", detail: "New information is available to delegates.", time: "14 min ago" },
+];
+
+  function navigateTo(nextPage) {
+    setMessage("");
+    setPage(nextPage);
+  }
+
+  function startSimulation(scenario) {
+    setSelectedScenario(scenario);
+    setMessage("");
+    setSpeech("");
+    setVotes(null);
+    setPage("simulation");
+  }
+
+function WorldGraphic({ selected, onSelect, large = false }) {
+  const [hovered, setHovered] = useState("");
+
+  const land = [
+    "M62 74 L91 51 140 42 167 58 199 62 220 88 199 110 181 126 171 158 149 179 131 161 114 143 94 128 72 116 55 94Z",
+    "M180 177 L205 186 223 211 216 241 201 268 197 304 180 343 165 326 158 291 147 263 154 229 164 204Z",
+    "M312 76 L342 59 378 62 398 78 431 72 457 59 488 64 516 48 555 59 586 73 619 76 645 96 675 108 690 133 669 151 639 146 614 158 588 145 569 164 542 151 522 173 494 159 471 170 454 147 430 139 407 156 389 137 368 139 348 122 322 116Z",
+    "M356 149 L381 151 407 175 410 203 394 233 377 264 361 292 343 270 331 240 329 211 338 185Z",
+    "M496 182 L524 167 558 174 579 193 604 199 628 223 620 251 590 261 573 248 555 268 536 251 514 238 504 214Z",
+    "M626 276 L653 266 682 276 699 296 687 317 659 325 636 309Z",
+    "M708 157 L726 148 741 162 733 180 716 181Z",
+    "M248 95 L267 83 286 92 279 110 259 117Z",
+  ];
+
+  return (
+    <div className="mun-app">
+      <header className="mun-navbar">
+        <button
+          className="mun-brand"
+          onClick={() => navigateTo("home")}
+          aria-label="Go to home"
+        >
+          <span className="mun-brand-icon">🌐</span>
+          <span>
+            <strong>MUNVERSE</strong>
+            <small>DIPLOMACY IN ACTION</small>
+          </span>
+        </button>
+
+        {countries.map((c) => {
+          const active = selected === c.name;
+          const showLabel = large || active || hovered === c.name;
+          const x = c.x * 8;
+          const y = c.y * 4.1;
+          const labelWidth = Math.max(62, c.name.length * 6.3 + 13);
+          const labelX = x + labelWidth + 9 > 795 ? x - labelWidth - 9 : x + 9;
+
+      <div className="mun-layout">
+        <aside className="mun-sidebar">
+          <p className="mun-sidebar-label">YOUR COMMAND CENTRE</p>
+
+          {navigation.map((item) => (
+            <button
+              key={item.id}
+              className={`mun-nav-item ${
+                page === item.id ? "active" : ""
+              }`}
+              onClick={() => navigateTo(item.id)}
+            >
+              <span>{item.emoji}</span>
+              {item.label}
+            </button>
+          ))}
+
+          <div className="mun-sidebar-bottom">
+            <span>✨</span>
+            <p>Your decisions shape the world.</p>
+          </div>
+        </aside>
+
+        <main className="mun-main">
+          <PageTransition key={page}>
+            {page === "home" && (
+              <>
+                <section className="mun-hero">
+                  <div className="mun-hero-content">
+                    <span className="mun-eyebrow">
+                      YOUR DIPLOMATIC JOURNEY STARTS HERE
+                    </span>
+
+                    <h1>
+                      The world is in
+                      <br />
+                      <span>your hands.</span>
+                    </h1>
+
+                    <p>
+                      Welcome, {profile.name}! Step into international
+                      diplomacy, negotiate with AI delegates, and discover
+                      how your decisions change the world.
+                    </p>
+
+                    <button
+                      className="mun-primary-button"
+                      onClick={() => navigateTo("explore")}
+                    >
+                      Start a Simulation <span>→</span>
+                    </button>
+                  </div>
+
+                  <div className="mun-globe-art" aria-hidden="true">
+                    <span className="mun-orbit orbit-one" />
+                    <span className="mun-orbit orbit-two" />
+                    <span className="mun-big-globe">🌍</span>
+                    <span className="mun-floating-emoji">🤝</span>
+                    <span className="mun-floating-star">✦</span>
+                  </div>
+                </section>
+
+                <section className="mun-section">
+                  <div className="mun-section-heading">
+                    <div>
+                      <span className="mun-eyebrow">YOUR NEXT MOVE</span>
+                      <h2>Where will you begin?</h2>
+                    </div>
+                  </div>
+
+                  <div className="mun-action-grid">
+                    <button
+                      className="mun-action-card"
+                      onClick={() => navigateTo("explore")}
+                    >
+                      <span className="mun-action-icon">🌍</span>
+                      <strong>Start Simulation</strong>
+                      <span>
+                        Choose a global crisis and represent a country.
+                      </span>
+                      <span className="mun-card-arrow">Explore →</span>
+                    </button>
+
+                    <button
+                      className="mun-action-card"
+                      onClick={() => navigateTo("join")}
+                    >
+                      <span className="mun-action-icon">🔑</span>
+                      <strong>Join Conference</strong>
+                      <span>
+                        Enter a room code to join your conference.
+                      </span>
+                      <span className="mun-card-arrow">Join →</span>
+                    </button>
+
+                    <button
+                      className="mun-action-card"
+                      onClick={() => navigateTo("practice")}
+                    >
+                      <span className="mun-action-icon">🤖</span>
+                      <strong>Practice with AI</strong>
+                      <span>
+                        Prepare speeches and practise diplomacy.
+                      </span>
+                      <span className="mun-card-arrow">Practise →</span>
+                    </button>
+
+                    <button
+                      className="mun-action-card"
+                      onClick={() => navigateTo("results")}
+                    >
+                      <span className="mun-action-icon">🏆</span>
+                      <strong>My Results</strong>
+                      <span>
+                        Review your diplomatic journey and progress.
+                      </span>
+                      <span className="mun-card-arrow">View results →</span>
+                    </button>
+                  </div>
+                </section>
+
+                <section className="mun-section">
+                  <div className="mun-section-heading">
+                    <div>
+                      <span className="mun-eyebrow">THE WORLD NEEDS YOU</span>
+                      <h2>Explore global crises</h2>
+                    </div>
+
+                    <button
+                      className="mun-text-button"
+                      onClick={() => navigateTo("explore")}
+                    >
+                      View all →
+                    </button>
+                  </div>
+
+                  <div className="mun-scenario-grid">
+                    {scenarios.slice(0, 2).map((scenario) => (
+                      <ScenarioCard
+                        key={scenario.title}
+                        scenario={scenario}
+                        onClick={() => startSimulation(scenario)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {page === "explore" && (
+              <section className="mun-section">
+                <span className="mun-eyebrow">CHOOSE YOUR MISSION</span>
+                <h1 className="mun-page-title">Explore global crises</h1>
+                <p className="mun-page-description">
+                  Every crisis has a different challenge. Choose one to begin
+                  your diplomatic journey.
+                </p>
+
+                <div className="mun-scenario-grid">
+                  {scenarios.map((scenario) => (
+                    <ScenarioCard
+                      key={scenario.title}
+                      scenario={scenario}
+                      onClick={() => startSimulation(scenario)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {page === "join" && (
+              <section className="mun-centered-page">
+                <div className="mun-feature-icon">🔑</div>
+                <span className="mun-eyebrow">
+                  YOUR CONFERENCE AWAITS
+                </span>
+                <h1>Join a conference</h1>
+                <p>Ask your conference organiser for the room code.</p>
+
+                <form className="mun-join-form" onSubmit={joinConference}>
+                  <label htmlFor="conference-code">Conference code</label>
+                  <input
+                    id="conference-code"
+                    value={joinCode}
+                    onChange={(event) => setJoinCode(event.target.value)}
+                    placeholder="Enter your room code"
+                    maxLength={40}
+                  />
+                  <button className="mun-primary-button" type="submit">
+                    Join Conference →
+                  </button>
+                </form>
+
+                {message && <p className="mun-notice">{message}</p>}
+              </section>
+            )}
+
+            {page === "practice" && (
+              <section className="mun-centered-page">
+                <div className="mun-feature-icon">🤖</div>
+                <span className="mun-eyebrow">
+                  YOUR PERSONAL DIPLOMATIC COACH
+                </span>
+                <h1>Practise with AI</h1>
+                <p>
+                  Choose a crisis to practise your arguments and prepare for
+                  international negotiations.
+                </p>
+
+                <div className="mun-practice-box">
+                  <label htmlFor="practice-scenario">
+                    Choose a scenario
+                  </label>
+                  <select
+                    id="practice-scenario"
+                    value={selectedScenario.title}
+                    onChange={(event) => {
+                      const scenario = scenarios.find(
+                        (item) => item.title === event.target.value
+                      );
+
+                      if (scenario) {
+                        setSelectedScenario(scenario);
+                      }
+                    }}
+                  >
+                    {scenarios.map((scenario) => (
+                      <option key={scenario.title} value={scenario.title}>
+                        {scenario.title}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    className="mun-primary-button"
+                    onClick={() => startSimulation(selectedScenario)}
+                  >
+                    Begin AI Practice →
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {page === "simulation" && (
+              <section className="mun-section">
+                <button
+                  className="mun-text-button"
+                  onClick={() => navigateTo("explore")}
+                >
+                  ← Back to crises
+                </button>
+
+                <div className="mun-simulation-header">
+                  <span className="mun-feature-icon">
+                    {selectedScenario.emoji}
+                  </span>
+                  <span className="mun-eyebrow">
+                    SIMULATION IN PROGRESS
+                  </span>
+                  <h1>{selectedScenario.title}</h1>
+                  <p>{selectedScenario.committee}</p>
+                  <p className="mun-page-description">
+                    {selectedScenario.description}
+                  </p>
+                </div>
+
+                <div className="mun-info-grid">
+                  <div className="mun-info-card">
+                    <span>👤</span>
+                    <p>Your delegate</p>
+                    <strong>
+                      {profile.avatar} {profile.name}
+                    </strong>
+                  </div>
+
+                  <div className="mun-info-card">
+                    <span>🤖</span>
+                    <p>AI delegates</p>
+                    <strong>Ready to negotiate</strong>
+                  </div>
+                </div>
+
+                <div className="mun-panel">
+                  <h2>Make your opening statement</h2>
+                  <p>
+                    Explain your proposed solution to the crisis. Your speech
+                    will be ready for the next stage of the simulation.
+                  </p>
+
+                  <form onSubmit={submitSpeech}>
+                    <textarea
+                      value={speech}
+                      onChange={(event) => setSpeech(event.target.value)}
+                      placeholder="Honourable delegates, my country believes..."
+                      rows={5}
+                    />
+
+                    <button className="mun-primary-button" type="submit">
+                      Submit Speech →
+                    </button>
+                  </form>
+
+                  {message && <p className="mun-notice">{message}</p>}
+                </div>
+
+                <div className="mun-panel">
+                  <h2>Resolution and voting</h2>
+                  <p>
+                    In a full conference, delegates draft clauses, negotiate
+                    amendments, and vote according to committee rules.
+                  </p>
+
+                  <button
+                    className="mun-secondary-button"
+                    onClick={() => {
+                      setVotes(null);
+                      navigateTo("results");
+                    }}
+                  >
+                    View Demo Outcome →
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {page === "results" && (
+              <section className="mun-centered-page">
+                <div className="mun-feature-icon">🏆</div>
+                <span className="mun-eyebrow">
+                  YOUR DIPLOMATIC JOURNEY
+                </span>
+                <h1>My Results</h1>
+                <p>
+                  Your conference reports and performance feedback will appear
+                  here as you complete simulations.
+                </p>
+
+                <div className="mun-results-card">
+                  <span className="mun-result-emoji">🌍</span>
+                  <h2>Ready to make history?</h2>
+                  <p>
+                    Complete a simulation to build your diplomatic portfolio.
+                  </p>
+
+                  <button
+                    className="mun-primary-button"
+                    onClick={() => navigateTo("explore")}
+                  >
+                    Start a Simulation →
+                  </button>
+                </div>
+              </section>
+            )}
+          </PageTransition>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function RotatingEarth() {
+  const globeRef = useRef(null);
+  const containerRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 560, height: 460 });
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.floor(entry.contentRect.width);
+      setDimensions({
+        width,
+        height: Math.min(510, Math.max(310, Math.floor(width * 0.82))),
+      });
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const globe = globeRef.current;
+    if (!globe) return;
+
+    const controls = globe.controls();
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.38;
+    controls.enableZoom = false;
+    controls.enablePan = false;
+    globe.pointOfView({ lat: 22, lng: 75, altitude: 2.15 }, 0);
+  }, []);
+
+  const arcs = [
+    { startLat: 28.6, startLng: 77.2, endLat: 38.9, endLng: -77.0 },
+    { startLat: 28.6, startLng: 77.2, endLat: 39.9, endLng: 116.4 },
+    { startLat: 48.8, startLng: 2.3, endLat: 35.7, endLng: 139.7 },
+    { startLat: 40.7, startLng: -74, endLat: 51.5, endLng: -.1 },
+    { startLat: 39.9, startLng: 116.4, endLat: 35.7, endLng: 139.7 },
+  ];
+
+  return (
+    <button className="mun-scenario-card" onClick={onClick}>
+      <span className="mun-scenario-emoji">{scenario.emoji}</span>
+      <span className="mun-scenario-level">{scenario.level}</span>
+      <h3>{scenario.title}</h3>
+      <p>{scenario.description}</p>
+      <span className="mun-scenario-committee">
+        {scenario.committee}
+      </span>
+      <span className="mun-card-arrow">Enter crisis →</span>
+    </button>
+  );
+}
+
+function Metric({ icon: Icon, label, value, sub, color = "blue" }) {
+  return (
+    <div className="metric-card">
+      <div className={`metric-icon ${color}`}><Icon size={17} /></div>
+      <div className="metric-copy">
+        <span>{label}</span><strong>{value}</strong>{sub && <small>{sub}</small>}
+      </div>
+    </div>
+  );
+}
+
+function MiniBars({ value, color = "blue" }) {
+  return <div className="mini-track"><span className={color} style={{ width: `${value}%` }} /></div>;
+}
+
+export default function App() {
+  const [screen, setScreen] = useState("landing");
+  const [countryName, setCountryName] = useState("India");
+  const [tab, setTab] = useState("dashboard");
+  const [modal, setModal] = useState("");
+  const [target, setTarget] = useState("China");
+  const [reason, setReason] = useState("Economic");
+  const [events, setEvents] = useState(initialEvents);
+  const [actionResult, setActionResult] = useState(null);
+  const [query, setQuery] = useState("");
+  const [advisorQuestion, setAdvisorQuestion] = useState("");
+  const [showAdvisor, setShowAdvisor] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [turn, setTurn] = useState(1);
+
+  const country = countries.find((c) => c.name === countryName) || countries[0];
+  const targetCountry = countries.find((c) => c.name === target) || countries[2];
+  const filteredCountries = countries.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+
+  function openGame() {
+    setScreen("select");
+    setNotice("");
+  }
+
+  function enterGame() {
+    setScreen("game");
+    setTab("dashboard");
+    setEvents([
+      { type: "alert", title: "Regional trade tensions", detail: `${country.name} is reviewing its diplomatic position amid rising tensions.`, time: "Just now" },
+      ...initialEvents.slice(1),
+    ]);
+  }
+
+  if (!profile) {
+    return (
+      <PageTransition key="entry">
+        <NameEntry onEnter={handleEnter} />
+      </PageTransition>
+    );
+  }
+
+  return (
+    <PageTransition key="dashboard">
+      <Dashboard
+        profile={profile}
+        onChangeProfile={handleChangeProfile}
+      />
+    </PageTransition>
+  );
+}
+
+function ZapIcon(props) {
+  return <Activity {...props} />;
+}
