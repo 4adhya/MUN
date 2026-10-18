@@ -859,3 +859,154 @@
   .opening-crisis-top h2 { font-size: 16px; }
   .conference-statusbar strong { font-size: 11px; }
 }
+
+.ai-proposal-panel {
+  margin: 22px 0;
+  padding: 21px;
+  border: 1px solid rgba(74, 167, 255, 0.3);
+  border-radius: 12px;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(43, 126, 213, 0.13),
+      transparent 45%
+    ),
+    #091a2b;
+  color: #edf6ff;
+}
+
+.ai-proposal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 17px;
+}
+
+.ai-proposal-heading h2 {
+  margin: 8px 0;
+  font-size: 18px;
+}
+
+.ai-proposal-heading p {
+  margin: 0;
+  color: #9fb6cb;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.ai-status {
+  padding: 6px 9px;
+  border: 1px solid #285578;
+  border-radius: 20px;
+  color: #83caff;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ai-proposal-button,
+.ai-approve-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 11px 15px;
+  border: 1px solid #3199e9;
+  border-radius: 8px;
+  background: #1265a5;
+  color: white;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.ai-proposal-button:hover:not(:disabled),
+.ai-approve-button:hover:not(:disabled) {
+  background: #197bbf;
+  transform: translateY(-1px);
+}
+
+.ai-proposal-button:disabled,
+.ai-approve-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.ai-proposal-result {
+  margin-top: 18px;
+  padding-top: 17px;
+  border-top: 1px solid #203b53;
+  overflow-wrap: anywhere;
+}
+
+.ai-proposal-result p {
+  color: #bfd0df;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.ai-proposal-result strong {
+  color: #f2f8ff;
+}
+
+.ai-proposal-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-proposal-meta > span {
+  color: #81ceff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.ai-proposal-meta > strong {
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #122e45;
+  color: #9dd8ff;
+  font-size: 11px;
+}
+
+.ai-proposal-reason {
+  padding: 12px;
+  border-left: 3px solid #3199e9;
+  border-radius: 0 7px 7px 0;
+  background: rgba(49, 153, 233, 0.07);
+}
+
+.ai-error {
+  color: #ffb2a8 !important;
+}
+
+.ai-no-action {
+  color: #9dd8ff !important;
+}
+
+.ai-action-message {
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: rgba(49, 153, 233, 0.1);
+}
+
+@media (max-width: 600px) {
+  .ai-proposal-panel {
+    padding: 15px;
+  }
+
+  .ai-proposal-heading {
+    flex-direction: column;
+  }
+
+  .ai-proposal-button,
+  .ai-approve-button {
+    width: 100%;
+  }
+}

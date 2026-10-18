@@ -18,6 +18,14 @@ import {
 } from "lucide-react";
 import WorldMap from "./WorldMap";
 import "./ConferenceRoom.css";
+import {
+  proposeAI,
+  sanction,
+  alliance,
+  aid,
+  getWorld,
+  getEvents,
+} from "../api/client.js";
 
 const OPENING_MOVES = {
   India: {
@@ -142,6 +150,12 @@ const RESPONSE_OPTIONS = [
 ];
 
 export default function ConferenceRoom({ country, onExit, onAdvisor }) {
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiProposal, setAiProposal] = useState(null);
+  const [aiError, setAiError] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
+
   const opening = OPENING_MOVES[country.name] || {
     opponent: "United States",
     flag: "🇺🇸",
@@ -238,7 +252,102 @@ export default function ConferenceRoom({ country, onExit, onAdvisor }) {
       setTurn((value) => value + 1);
     }, 1100);
   };
+const toCountryId = (name) =>
+  name.trim().toLowerCase().replace(/\s+/g, "-");
 
+const requestAIProposal = async () => {
+  setAiLoading(true);
+  setAiError("");
+  setAiProposal(null);
+  setActionMessage("");
+
+  try {
+    const situation = [
+      `Scenario: ${opening.issue}.`,
+      opening.reason,
+      `The stated demand is: ${opening.demand}.`,
+      `Recommend one response that protects ${country.name}'s interests.`,
+      "Use the current simulation state.",
+    ].join(" ");
+
+    const result = await proposeAI(
+      toCountryId(country.name),
+      situation
+    );
+
+    setAiProposal(result);
+  } catch (error) {
+    setAiError(
+      error.message || "Unable to obtain an AI proposal."
+    );
+  } finally {
+    setAiLoading(false);
+  }
+};
+
+const approveAIProposal = async () => {
+  const decision = aiProposal?.decision;
+
+  if (
+    !decision ||
+    decision.decision === "NO_ACTION" ||
+    !decision.target
+  ) {
+    return;
+  }
+
+  setActionLoading(true);
+  setActionMessage("");
+
+  try {
+    const actor = toCountryId(country.name);
+
+    // Gemini returns the canonical country name, not its ID.
+    // Convert it to the backend's lowercase country ID.
+    const target = toCountryId(decision.target);
+
+    let result;
+
+    if (decision.decision === "SANCTION") {
+      result = await sanction(actor, target);
+    } else if (decision.decision === "ALLIANCE") {
+      result = await alliance(actor, target);
+    } else if (decision.decision === "AID") {
+      result = await aid(actor, target, 10);
+    } else {
+      throw new Error("Unsupported decision type.");
+    }
+
+    setActionMessage(
+      `Action executed: ${decision.decision} involving ${decision.target}.`
+    );
+
+    setTimeline((items) => [
+      {
+        id: Date.now(),
+        type: "player",
+        actor: country.name,
+        flag: country.flag,
+        title: `${decision.decision}: ${decision.target}`,
+        detail: result.event?.message || decision.reason,
+        time: "Approved AI action",
+      },
+      ...items,
+    ]);
+
+    // Fetch authoritative state after the action.
+    // These calls confirm the backend now has the updated world/events.
+    await Promise.all([getWorld(), getEvents()]);
+  } catch (error) {
+    setActionMessage(
+      `Action was not executed: ${
+        error.message || "Please try again."
+      }`
+    );
+  } finally {
+    setActionLoading(false);
+  }
+};
   return (
     <main className="conference-page">
       <header className="conference-heading">
@@ -380,6 +489,110 @@ export default function ConferenceRoom({ country, onExit, onAdvisor }) {
                   Ask your advisor <ArrowRight size={14} />
                 </button>
               </div>
+              <section className="ai-proposal-panel">
+  <div className="ai-proposal-heading">
+    <div>
+      <span className="conference-section-label">
+        LIVE GEMINI AGENT
+      </span>
+
+      <h2>AI diplomatic advisor</h2>
+
+      <p>
+        Generate a recommendation for {country.name} using the
+        current simulation state.
+      </p>
+    </div>
+
+    <span className="ai-status">
+      {aiLoading ? "ANALYZING" : "READY"}
+    </span>
+  </div>
+
+  <button
+    className="ai-proposal-button"
+    onClick={requestAIProposal}
+    disabled={aiLoading || actionLoading}
+  >
+    <Bot size={17} />
+    {aiLoading
+      ? "Analyzing situation..."
+      : "Generate AI proposal"}
+    <ArrowRight size={15} />
+  </button>
+
+  {aiError && (
+    <p className="ai-error" role="alert">
+      {aiError}
+    </p>
+  )}
+
+  {aiProposal && (
+    <div className="ai-proposal-result">
+      <div className="ai-proposal-meta">
+        <span>
+          {aiProposal.used_fallback
+            ? "SAFE FALLBACK"
+            : "GEMINI GENERATED"}
+        </span>
+
+        <strong>
+          {aiProposal.decision.decision.replaceAll("_", " ")}
+        </strong>
+      </div>
+
+      <p className="ai-proposal-reason">
+        {aiProposal.decision.reason}
+      </p>
+
+      <p>
+        <strong>Country:</strong>{" "}
+        {aiProposal.decision.country}
+      </p>
+
+      <p>
+        <strong>Target:</strong>{" "}
+        {aiProposal.decision.target || "No target"}
+      </p>
+
+      {aiProposal.used_fallback && (
+        <p className="ai-error">
+          This is a fallback response, not a Gemini-generated
+          recommendation.
+          {aiProposal.error ? ` ${aiProposal.error}` : ""}
+        </p>
+      )}
+
+      {!aiProposal.used_fallback &&
+        aiProposal.decision.decision !== "NO_ACTION" && (
+          <button
+            className="ai-approve-button"
+            onClick={approveAIProposal}
+            disabled={actionLoading}
+          >
+            <Check size={16} />
+            {actionLoading
+              ? "Executing..."
+              : "Approve & execute"}
+          </button>
+        )}
+
+      {!aiProposal.used_fallback &&
+        aiProposal.decision.decision === "NO_ACTION" && (
+          <p className="ai-no-action">
+            The AI recommends no action. The world state will
+            remain unchanged.
+          </p>
+        )}
+
+      {actionMessage && (
+        <p className="ai-action-message" role="status">
+          {actionMessage}
+        </p>
+      )}
+    </div>
+  )}
+</section>
             </div>
 
             <div className="response-grid">

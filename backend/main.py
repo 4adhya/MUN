@@ -1,27 +1,31 @@
-"""FastAPI entry point.
 
-Run from the backend/ folder:
-    uvicorn main:app --reload
+"""FastAPI entry point for the WorldEvent geopolitical simulation.
 
-Routes only: all game logic lives in simulation.py / rules.py.
+Run from the project root:
+    python3 -m uvicorn backend.main:app --reload --port 8000
+
+The backend remains the source of truth for world state and action validation.
+AI agents propose actions; they never execute actions directly.
 """
+
 import logging
 import os
 import sys
 from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 AI_DIR = Path(__file__).resolve().parent.parent / "ai"
 
 if str(AI_DIR) not in sys.path:
     sys.path.insert(0, str(AI_DIR))
 
-from pydantic import BaseModel, Field
-from ai.country_agent import AureliaAgent
+from ai.country_agent import AgentProfile, CountryAgent
 from ai.fallback import decide_with_fallback
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from .models import (
     ActionResponse,
@@ -36,21 +40,18 @@ from .models import (
 from .rules import ActionError
 from .simulation import simulation
 
-logger = logging.getLogger("mun")
+logger = logging.getLogger("worldevent")
 
 app = FastAPI(
-    title="MUN Simulation API",
-    version="0.3.0",
+    title="WorldEvent API",
+    version="0.4.0",
     description=(
-        "Backend for the MUN geopolitical simulation: 10 fictional countries with GDP, stability, "
-        "resources, relationships, alliances, sanctions and trade routes. State is in memory; "
-        "POST /simulation/reset restores the starting world."
+        "Geopolitical simulation API with country data, trade routes, "
+        "diplomatic relationships, sanctions, alliances, aid and AI proposals. "
+        "Simulation state is currently held in memory."
     ),
 )
 
-# --- CORS ------------------------------------------------------------------------
-# Local Vite/React dev servers by default. For a deployed frontend, set CORS_ORIGINS to a
-# comma-separated list, e.g.  CORS_ORIGINS=https://my-app.vercel.app,http://localhost:5173
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -61,7 +62,7 @@ DEFAULT_CORS_ORIGINS = [
 
 def cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS", "")
-    custom = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    custom = [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
     return custom or DEFAULT_CORS_ORIGINS
 
 
@@ -74,41 +75,63 @@ app.add_middleware(
 )
 
 
-# --- Errors ------------------------------------------------------------------------
 @app.exception_handler(ActionError)
 def action_error_handler(_request: Request, exc: ActionError) -> JSONResponse:
-    """Rejected actions (404 unknown country, 409 duplicate, 400 invalid...)."""
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message},
+    )
 
 
 @app.exception_handler(RequestValidationError)
-def validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
-    """422 for malformed requests. Only loc/msg/type are returned: FastAPI's default also
-    echoes the raw input, which crashes into a 500 for values such as NaN."""
+def validation_error_handler(
+    _request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
     detail = [
-        {"loc": list(err.get("loc", ())), "msg": str(err.get("msg", "")), "type": str(err.get("type", ""))}
-        for err in exc.errors()
+        {
+            "loc": list(error.get("loc", ())),
+            "msg": str(error.get("msg", "")),
+            "type": str(error.get("type", "")),
+        }
+        for error in exc.errors()
     ]
     return JSONResponse(status_code=422, content={"detail": detail})
 
 
 @app.exception_handler(Exception)
-def unexpected_error_handler(_request: Request, exc: Exception) -> JSONResponse:
-    """Last resort: a JSON 500 instead of a bare text page. The traceback goes to the server log only."""
-    logger.exception("Unhandled error", exc_info=exc)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+def unexpected_error_handler(
+    _request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    logger.exception("Unhandled request error", exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 
-# Error responses documented in /docs for the action endpoints.
 ACTION_ERRORS = {
-    400: {"model": ErrorResponse, "description": "Actor and target are the same country, or invalid aid amount"},
-    404: {"model": ErrorResponse, "description": "Actor or target country does not exist"},
-    409: {"model": ErrorResponse, "description": "Duplicate or conflicting action (e.g. already sanctioned / allied)"},
+    400: {
+        "model": ErrorResponse,
+        "description": "Invalid action or aid amount.",
+    },
+    404: {
+        "model": ErrorResponse,
+        "description": "Actor or target country does not exist.",
+    },
+    409: {
+        "model": ErrorResponse,
+        "description": "Duplicate or conflicting action.",
+    },
 }
 
 
-# --- Read endpoints -------------------------------------------------------------------
-@app.get("/health", tags=["system"], summary="Liveness check")
+# ---------------------------------------------------------------------------
+# Read endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/health", tags=["system"], summary="Backend health check")
 def health() -> dict:
     return {"status": "ok"}
 
@@ -117,26 +140,111 @@ def health() -> dict:
     "/world",
     response_model=WorldState,
     tags=["world"],
-    summary="Full current world state",
-    description=(
-        "Everything needed to render the simulation: turn, all countries (GDP, stability, resources, "
-        "relationships, alliances, sanctions, trade partners), all trade routes with their current "
-        "status/efficiency/volume, and the full event history (oldest first)."
-    ),
+    summary="Get the complete world state",
 )
 def get_world() -> WorldState:
     return simulation.world
 
+
+@app.get(
+    "/countries/{country_id}",
+    response_model=Country,
+    tags=["world"],
+    summary="Get a country by ID",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "Country not found.",
+        }
+    },
+)
+def get_country(country_id: str) -> Country:
+    country = simulation.get_country(country_id.strip().lower())
+
+    if country is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Country '{country_id}' not found",
+        )
+
+    return country
+
+
+@app.get(
+    "/events",
+    response_model=list[DiplomacyEvent],
+    tags=["events"],
+    summary="Get recent diplomatic events",
+)
+def get_events(
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list[DiplomacyEvent]:
+    return simulation.recent_events(limit)
+
+
+# ---------------------------------------------------------------------------
+# AI proposals
+# ---------------------------------------------------------------------------
+
 class AIProposalRequest(BaseModel):
-    situation: str = Field(min_length=1, max_length=1000)
+    country_id: str = Field(
+        default="india",
+        min_length=1,
+        max_length=64,
+    )
+    situation: str = Field(
+        min_length=1,
+        max_length=1000,
+    )
 
 
-@app.post("/ai/propose", tags=["AI"], summary="Ask Aurelia for a diplomatic proposal")
+@app.post(
+    "/ai/propose",
+    tags=["AI"],
+    summary="Generate a country-specific AI proposal",
+)
 def propose_ai_action(req: AIProposalRequest) -> dict:
-    """Generate a proposal from the current world state without executing it."""
+    """Generate a validated proposal without executing it."""
+
     world = simulation.world
-    agent = AureliaAgent()
-    outcome = decide_with_fallback(agent, req.situation, world)
+    country_id = req.country_id.strip().lower()
+
+    country = next(
+        (item for item in world.countries if item.id == country_id),
+        None,
+    )
+
+    if country is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Country '{req.country_id}' not found",
+        )
+
+    # The selected country determines the identity of the agent.
+    profile = AgentProfile(
+        country_id=country.id,
+        name=country.name,
+        personality=(
+            "Pragmatic and strategic. Protect national interests while "
+            "considering economic stability, trade, diplomatic relationships "
+            "and the risks of escalation."
+        ),
+        goals=(
+            f"Protect {country.name}'s economic stability.",
+            "Maintain beneficial trade relationships.",
+            "Improve diplomatic relationships when strategically useful.",
+            "Respond proportionately to threats and hostile actions.",
+            "Avoid unnecessary escalation and economic damage.",
+        ),
+    )
+
+    agent = CountryAgent(profile)
+
+    outcome = decide_with_fallback(
+        agent,
+        req.situation,
+        world,
+    )
 
     return {
         "source": outcome.source,
@@ -147,39 +255,15 @@ def propose_ai_action(req: AIProposalRequest) -> dict:
     }
 
 
-@app.get(
-    "/countries/{country_id}",
-    response_model=Country,
-    tags=["world"],
-    summary="One country's current state",
-    description="Case-insensitive id, e.g. `/countries/aurelia`.",
-    responses={404: {"model": ErrorResponse, "description": "Unknown country id"}},
-)
-def get_country(country_id: str) -> Country:
-    country = simulation.get_country(country_id.strip().lower())
-    if country is None:
-        raise HTTPException(status_code=404, detail=f"Country '{country_id}' not found")
-    return country
+# ---------------------------------------------------------------------------
+# Validated simulation actions
+# ---------------------------------------------------------------------------
 
-
-@app.get(
-    "/events",
-    response_model=list[DiplomacyEvent],
-    tags=["events"],
-    summary="Diplomacy event feed (newest first)",
-    description="Most recent events, newest first. `limit` is 1-100 (default 20).",
-)
-def get_events(limit: int = Query(20, ge=1, le=100)) -> list[DiplomacyEvent]:
-    return simulation.recent_events(limit)
-
-
-# --- Player actions: routes only ---------------------------------------------------------
 @app.post(
     "/actions/sanction",
     response_model=ActionResponse,
     tags=["actions"],
-    summary="Actor sanctions target",
-    description="Target loses GDP and stability, relationship drops, and every direct trade route between the two is cut.",
+    summary="Apply sanctions",
     responses=ACTION_ERRORS,
 )
 def post_sanction(req: SanctionRequest) -> ActionResponse:
@@ -190,8 +274,7 @@ def post_sanction(req: SanctionRequest) -> ActionResponse:
     "/actions/alliance",
     response_model=ActionResponse,
     tags=["actions"],
-    summary="Actor forms an alliance with target",
-    description="Both countries join a new bilateral alliance; relationship and stability rise and direct trade routes run at 110%.",
+    summary="Form an alliance",
     responses=ACTION_ERRORS,
 )
 def post_alliance(req: AllianceRequest) -> ActionResponse:
@@ -202,20 +285,22 @@ def post_alliance(req: AllianceRequest) -> ActionResponse:
     "/actions/aid",
     response_model=ActionResponse,
     tags=["actions"],
-    summary="Actor sends aid to target",
-    description="Amount is 1-500 and at most 10% of the actor's GDP. Target gains GDP and stability, actor's GDP dips slightly, relationship improves.",
+    summary="Send aid",
     responses=ACTION_ERRORS,
 )
 def post_aid(req: AidRequest) -> ActionResponse:
-    return simulation.aid(req.actor, req.target, req.amount)
+    return simulation.aid(
+        req.actor,
+        req.target,
+        req.amount,
+    )
 
 
 @app.post(
     "/simulation/reset",
     response_model=WorldState,
     tags=["simulation"],
-    summary="Restore the starting world",
-    description="Resets countries, relationships, alliances, sanctions, trade routes and clears all events. Returns the fresh world.",
+    summary="Reset the simulation",
 )
 def reset_simulation() -> WorldState:
     return simulation.reset()
