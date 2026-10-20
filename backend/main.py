@@ -1,3 +1,4 @@
+
 """FastAPI entry point for the WorldEvent geopolitical simulation.
 
 Run from the project root:
@@ -27,6 +28,12 @@ from ai.country_agent import COUNTRY_PROFILES, AgentProfile, CountryAgent
 from ai.fallback import decide_with_fallback
 from ai.gemini_client import resolve_model
 
+from .conference_schemas import (
+    ConferenceCreateRequest,
+    ConferenceSnapshot,
+    JoinConferenceRequest,
+)
+from .conference_service import conference_service
 from .country_registry import CountryRecord, find_world_country, resolve_country
 from .models import (
     ActionResponse,
@@ -38,6 +45,7 @@ from .models import (
     SanctionRequest,
     WorldState,
 )
+from .mun import Participant
 from .rules import ActionError
 from .simulation import simulation
 
@@ -181,6 +189,63 @@ def get_events(
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[DiplomacyEvent]:
     return simulation.recent_events(limit)
+
+
+# ---------------------------------------------------------------------------
+# MUN conferences (Phase 2: create, join, view, start)
+# ---------------------------------------------------------------------------
+
+CONFERENCE_ERRORS = {
+    404: {"model": ErrorResponse, "description": "Conference not found."},
+    409: {"model": ErrorResponse, "description": "Conference is not WAITING, is full, or cannot start."},
+    422: {"model": ErrorResponse, "description": "Invalid committee, role or request, or no available country."},
+}
+
+
+@app.post(
+    "/conference/create",
+    response_model=ConferenceSnapshot,
+    status_code=201,
+    tags=["conference"],
+    summary="Create a conference (WAITING, phase LOBBY)",
+    responses={422: CONFERENCE_ERRORS[422]},
+)
+def create_conference(req: ConferenceCreateRequest) -> ConferenceSnapshot:
+    return conference_service.create(req.name, req.committee, req.topic)
+
+
+@app.post(
+    "/conference/{conference_id}/join",
+    response_model=Participant,
+    status_code=201,
+    tags=["conference"],
+    summary="Join a WAITING conference",
+    responses=CONFERENCE_ERRORS,
+)
+def join_conference(conference_id: str, req: JoinConferenceRequest) -> Participant:
+    return conference_service.join(conference_id, req.name, req.role)
+
+
+@app.get(
+    "/conference/{conference_id}",
+    response_model=ConferenceSnapshot,
+    tags=["conference"],
+    summary="Get a conference snapshot",
+    responses={404: CONFERENCE_ERRORS[404]},
+)
+def get_conference(conference_id: str) -> ConferenceSnapshot:
+    return conference_service.get(conference_id)
+
+
+@app.post(
+    "/conference/{conference_id}/start",
+    response_model=ConferenceSnapshot,
+    tags=["conference"],
+    summary="Start a conference: assign countries, create the world, enter ROLL_CALL",
+    responses=CONFERENCE_ERRORS,
+)
+def start_conference(conference_id: str) -> ConferenceSnapshot:
+    return conference_service.start(conference_id)
 
 
 # ---------------------------------------------------------------------------
