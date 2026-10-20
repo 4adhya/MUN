@@ -45,7 +45,7 @@ TRADE_EFFICIENCY_MAX = 150           # hard ceiling for any boost
 ALLIANCE_TRADE_EFFICIENCY = 110      # direct routes between new allies run at 110% (a SET, never stacked)
 
 # --- Aid tuning --------------------------------------------------------------
-MIN_AID_AMOUNT = 1.0                 # billions of fictional dollars
+MIN_AID_AMOUNT = 1.0                 # billions of illustrative simulation dollars
 MAX_AID_AMOUNT = 500.0
 MAX_AID_GDP_SHARE = 0.10             # actor may give at most 10% of its GDP at once
 AID_ACTOR_GDP_COST_RATE = 0.20       # actor GDP falls by 20% of the amount

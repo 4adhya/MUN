@@ -87,10 +87,10 @@ def test_active_routes_have_positive_volume_at_baseline():
 # 3 + 4. sanction hits the right routes, not others -------------------------------
 def test_sanction_cuts_only_the_direct_routes():
     before = reset()
-    pair = pair_ids(before, "caldoria", "eldoria")
-    assert len(pair) == 2  # route-04 (caldoria->eldoria) and route-05 (eldoria->caldoria)
+    pair = pair_ids(before, "india", "united-states")
+    assert len(pair) == 2  # route-01 (india->united-states) and route-02 (united-states->india)
 
-    assert act("sanction", "caldoria", "eldoria").status_code == 200
+    assert act("sanction", "india", "united-states").status_code == 200
     after = world()
 
     for rid in pair:  # both directions, whichever side sanctioned
@@ -101,18 +101,18 @@ def test_sanction_cuts_only_the_direct_routes():
     for rid, r in routes(after).items():  # everything else is byte-for-byte unchanged
         if rid not in pair:
             assert r == routes(before)[rid], rid
-    assert "eldoria" not in partners(after, "caldoria")
-    assert "caldoria" not in partners(after, "eldoria")
+    assert "united-states" not in partners(after, "india")
+    assert "india" not in partners(after, "united-states")
     # other partner links of the two countries survive
-    assert partners(after, "caldoria") == partners(before, "caldoria") - {"eldoria"}
-    assert partners(after, "eldoria") == partners(before, "eldoria") - {"caldoria"}
+    assert partners(after, "india") == partners(before, "india") - {"united-states"}
+    assert partners(after, "united-states") == partners(before, "united-states") - {"india"}
     assert_trade_consistent(after)
 
 
 def test_sanction_with_no_direct_route_changes_no_routes():
     before = reset()
-    assert not pair_ids(before, "aurelia", "garvonia")
-    assert act("sanction", "aurelia", "garvonia").status_code == 200
+    assert not pair_ids(before, "india", "japan")
+    assert act("sanction", "india", "japan").status_code == 200
     after = world()
     assert after["trade_routes"] == before["trade_routes"]
     assert_trade_consistent(after)
@@ -120,19 +120,19 @@ def test_sanction_with_no_direct_route_changes_no_routes():
 
 def test_sanction_event_reports_trade_effects():
     reset()
-    ev = act("sanction", "caldoria", "eldoria").json()["event"]
-    assert sorted(ev["effects"]["trade_routes_deactivated"]) == ["route-04", "route-05"]
-    assert set(ev["effects"]["trade_routes"]) == {"route-04", "route-05"}
-    assert ev["effects"]["trade_routes"]["route-04"]["after"]["volume"] == 0
+    ev = act("sanction", "india", "united-states").json()["event"]
+    assert sorted(ev["effects"]["trade_routes_deactivated"]) == ["route-01", "route-02"]
+    assert set(ev["effects"]["trade_routes"]) == {"route-01", "route-02"}
+    assert ev["effects"]["trade_routes"]["route-01"]["after"]["volume"] == 0
 
 
 # 5 + 6. alliance boosts the right routes, not others -------------------------------
 def test_alliance_boosts_only_the_direct_routes():
     before = reset()
-    pair = pair_ids(before, "garvonia", "fyrnia")  # Meridian Pact vs Sunward Union: not yet allied
+    pair = pair_ids(before, "india", "united-states")  # trade in both directions; not yet allied
     assert len(pair) == 2
 
-    assert act("alliance", "garvonia", "fyrnia").status_code == 200
+    assert act("alliance", "india", "united-states").status_code == 200
     after = world()
 
     for rid in pair:
@@ -144,23 +144,23 @@ def test_alliance_boosts_only_the_direct_routes():
     for rid, r in routes(after).items():
         if rid not in pair:
             assert r == routes(before)[rid], rid
-    for cid in ("garvonia", "fyrnia"):  # still trading with the same partners
+    for cid in ("india", "united-states"):  # still trading with the same partners
         assert partners(after, cid) == partners(before, cid)
     assert_trade_consistent(after)
 
 
 def test_alliance_without_direct_route_changes_no_routes():
     before = reset()
-    assert not pair_ids(before, "helvaris", "jorvania")
-    assert act("alliance", "helvaris", "jorvania").status_code == 200
+    assert not pair_ids(before, "france", "japan")
+    assert act("alliance", "france", "japan").status_code == 200
     assert world()["trade_routes"] == before["trade_routes"]
 
 
 def test_alliance_never_creates_routes():
     before = reset()
-    act("alliance", "aurelia", "caldoria")
-    act("alliance", "garvonia", "fyrnia")
-    act("alliance", "helvaris", "jorvania")
+    act("alliance", "india", "united-states")
+    act("alliance", "china", "japan")
+    act("alliance", "france", "japan")  # no direct route between these two
     after = world()
     assert [r["id"] for r in after["trade_routes"]] == [r["id"] for r in before["trade_routes"]]
 
@@ -168,13 +168,13 @@ def test_alliance_never_creates_routes():
 # alliance bonus must not stack -------------------------------------------------------
 def test_alliance_bonus_does_not_stack():
     reset()
-    act("alliance", "aurelia", "caldoria")
+    act("alliance", "india", "united-states")
     first = world()
-    assert routes(first)["route-03"]["efficiency"] == ALLIANCE_TRADE_EFFICIENCY
+    assert routes(first)["route-02"]["efficiency"] == ALLIANCE_TRADE_EFFICIENCY
 
     # processing the same relationship again is rejected and changes nothing
-    assert act("alliance", "aurelia", "caldoria").status_code == 409
-    assert act("alliance", "caldoria", "aurelia").status_code == 409
+    assert act("alliance", "india", "united-states").status_code == 409
+    assert act("alliance", "united-states", "india").status_code == 409
     assert world() == first
 
     # recalculating (any number of times) never adds the bonus again
@@ -182,37 +182,37 @@ def test_alliance_bonus_does_not_stack():
         assert recalculate_trade_effects(simulation.world) == {}
     assert world() == first
 
-    # allying with a third country does not touch the aurelia-caldoria route
-    act("alliance", "caldoria", "dravenia")
-    assert routes(world())["route-03"] == routes(first)["route-03"]
+    # allying with a third country does not touch the india-united-states route
+    act("alliance", "united-states", "brazil")
+    assert routes(world())["route-02"] == routes(first)["route-02"]
 
 
 # sanction after alliance and the reverse order ---------------------------------------
 def test_sanction_overrides_alliance_boost():
     reset()
-    act("alliance", "aurelia", "caldoria")
-    assert act("sanction", "aurelia", "caldoria").status_code == 200
-    r = routes(world())["route-03"]
+    act("alliance", "india", "united-states")
+    assert act("sanction", "india", "united-states").status_code == 200
+    r = routes(world())["route-02"]
     assert r["active"] is False and r["volume"] == 0 and r["efficiency"] == 0
     assert_trade_consistent(world())
 
 
 def test_sanctioned_pair_cannot_ally_so_no_boost_leaks():
     reset()
-    act("sanction", "caldoria", "eldoria")
+    act("sanction", "india", "united-states")
     snapshot = world()
-    # rejected (they already share the Meridian Pact), and nothing changes
-    assert act("alliance", "caldoria", "eldoria").status_code == 409
+    # rejected (sanctions block alliances), and nothing changes
+    assert act("alliance", "india", "united-states").status_code == 409
     assert world() == snapshot
-    assert routes(snapshot)["route-04"]["volume"] == 0
+    assert routes(snapshot)["route-01"]["volume"] == 0
 
 
 # 7. reset restores trade state -----------------------------------------------------------
 def test_reset_restores_original_trade_state():
     original = create_initial_world().model_dump()["trade_routes"]
-    act("sanction", "caldoria", "eldoria")
-    act("alliance", "garvonia", "fyrnia")
-    act("alliance", "aurelia", "caldoria")
+    act("sanction", "india", "united-states")
+    act("alliance", "china", "japan")
+    act("alliance", "france", "united-kingdom")
     assert world()["trade_routes"] != original
 
     after_reset = reset()
@@ -255,20 +255,20 @@ def test_repeated_alliances_never_exceed_efficiency_ceiling():
 # recalculation function --------------------------------------------------------------------
 def test_recalculate_is_idempotent_and_repairs_drift():
     reset()
-    act("sanction", "caldoria", "eldoria")
-    act("alliance", "garvonia", "fyrnia")
+    act("sanction", "india", "united-states")
+    act("alliance", "china", "japan")
     settled = simulation.world.model_copy(deep=True)
     assert recalculate_trade_effects(simulation.world) == {}
     assert simulation.world == settled
 
     # corrupt a copy by hand; recalculation repairs it
     broken = settled.model_copy(deep=True)
-    broken.trade_routes[0].volume = 9999
-    broken.trade_routes[3].active = True      # route-04 is sanctioned, must be cut again
+    broken.trade_routes[3].volume = 9999      # route-04 (china->japan, allied): volume must be recomputed
+    broken.trade_routes[1].active = True      # route-02 is sanctioned, must be cut again
     broken.countries[0].trade_partners = []
     assert validate_world(broken) != []
     changes = recalculate_trade_effects(broken)
-    assert "route-01" in changes and "route-04" in changes
+    assert "route-04" in changes and "route-02" in changes
     assert validate_world(broken) == []
     assert broken == settled
 
@@ -276,11 +276,11 @@ def test_recalculate_is_idempotent_and_repairs_drift():
 def test_cut_route_is_restored_when_sanction_is_removed():
     """Future-proofing for 'lift sanction': recalculation brings trade back to normal."""
     reset()
-    act("sanction", "caldoria", "eldoria")
+    act("sanction", "india", "united-states")
     draft = simulation.world.model_copy(deep=True)
-    next(c for c in draft.countries if c.id == "eldoria").sanctions.remove("caldoria")
+    next(c for c in draft.countries if c.id == "united-states").sanctions.remove("india")
     recalculate_trade_effects(draft)
-    for rid in ("route-04", "route-05"):
+    for rid in ("route-01", "route-02"):
         r = next(x for x in draft.trade_routes if x.id == rid)
         assert r.active and r.efficiency == 100 and r.volume == r.base_volume
     assert validate_world(draft) == []
@@ -302,12 +302,12 @@ def test_validate_world_flags_bad_trade_state():
 # GET /world exposes current trade state ---------------------------------------------------
 def test_world_endpoint_shows_current_trade_state():
     before = reset()
-    act("sanction", "caldoria", "eldoria")
+    act("sanction", "india", "united-states")
     mid = world()
-    assert routes(mid)["route-04"]["active"] is False
-    assert routes(before)["route-04"]["active"] is True
-    act("alliance", "garvonia", "fyrnia")
-    assert routes(world())["route-08"]["volume"] > routes(mid)["route-08"]["volume"]
+    assert routes(mid)["route-01"]["active"] is False
+    assert routes(before)["route-01"]["active"] is True
+    act("alliance", "china", "japan")
+    assert routes(world())["route-04"]["volume"] > routes(mid)["route-04"]["volume"]
 
 
 if __name__ == "__main__":

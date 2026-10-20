@@ -15,8 +15,7 @@ from backend.simulation import create_initial_world, simulation
 client = TestClient(app)
 safe_client = TestClient(app, raise_server_exceptions=False)  # returns 500s instead of raising
 
-IDS = ["aurelia", "brevania", "caldoria", "dravenia", "eldoria",
-       "fyrnia", "garvonia", "helvaris", "istoria", "jorvania"]
+IDS = [c.id for c in create_initial_world().countries]  # the 8 real countries from countries.py
 
 
 def snapshot() -> dict:
@@ -41,15 +40,15 @@ def assert_world_sane() -> None:
 def test_sanction_aid_alliance_aid_reset_sequence():
     original = create_initial_world().model_dump()
 
-    assert post("sanction", "aurelia", "caldoria").status_code == 200
+    assert post("sanction", "india", "united-states").status_code == 200
     assert_world_sane()
-    assert post("aid", "helvaris", "istoria", amount=100).status_code == 200
+    assert post("aid", "france", "brazil", amount=100).status_code == 200
     assert_world_sane()
-    # aurelia sanctions caldoria, so that pair may NOT ally; garvonia/fyrnia may
-    assert post("alliance", "aurelia", "caldoria").status_code == 409
-    assert post("alliance", "garvonia", "fyrnia").status_code == 200
+    # india sanctions united-states, so that pair may NOT ally; china/japan may
+    assert post("alliance", "india", "united-states").status_code == 409
+    assert post("alliance", "china", "japan").status_code == 200
     assert_world_sane()
-    assert post("aid", "garvonia", "fyrnia", amount=20).status_code == 200
+    assert post("aid", "china", "japan", amount=20).status_code == 200
     assert_world_sane()
     assert len(simulation.world.events) == 4
 
@@ -91,9 +90,9 @@ def test_fuzz_mixed_actions_keep_world_valid_and_failures_change_nothing():
 
 def test_actions_never_change_resources():
     start = {c["id"]: c["resources"] for c in snapshot()["countries"]}
-    post("sanction", "caldoria", "eldoria")
-    post("alliance", "garvonia", "fyrnia")
-    post("aid", "aurelia", "istoria", amount=100)
+    post("sanction", "india", "united-states")
+    post("alliance", "china", "japan")
+    post("aid", "france", "brazil", amount=100)
     assert {c.id: c.resources for c in simulation.world.countries} == start
 
 
@@ -109,24 +108,24 @@ def test_validate_world_flags_resource_out_of_range():
 # --- atomicity: a rule that fails midway must not leave partial changes -----------------
 def test_rule_that_mutates_then_rejects_leaves_world_untouched(monkeypatch):
     def mutate_then_reject(world, _actor, _target):
-        caldoria = find_country(world, "caldoria")
-        caldoria.gdp = 1.0
-        caldoria.stability = 0
+        victim = find_country(world, "united-states")
+        victim.gdp = 1.0
+        victim.stability = 0
         world.trade_routes[0].active = False
         raise ConflictError("rejected halfway")
 
     monkeypatch.setattr(sim_module, "apply_sanction", mutate_then_reject)
     before = snapshot()
-    r = post("sanction", "aurelia", "caldoria")
+    r = post("sanction", "india", "united-states")
     assert r.status_code == 409 and r.json() == {"detail": "rejected halfway"}
     assert snapshot() == before
 
 
 @pytest.mark.parametrize("corrupt", [
-    lambda w: setattr(find_country(w, "caldoria"), "gdp", -5.0),
-    lambda w: setattr(find_country(w, "caldoria"), "stability", 150),
-    lambda w: find_country(w, "caldoria").relationships.__setitem__("aurelia", 999),
-    lambda w: find_country(w, "caldoria").relationships.__setitem__("aurelia", -7),  # breaks symmetry
+    lambda w: setattr(find_country(w, "united-states"), "gdp", -5.0),
+    lambda w: setattr(find_country(w, "united-states"), "stability", 150),
+    lambda w: find_country(w, "united-states").relationships.__setitem__("india", 999),
+    lambda w: find_country(w, "united-states").relationships.__setitem__("india", -7),  # breaks symmetry
     lambda w: setattr(w.trade_routes[0], "base_volume", 0),  # recalculation cannot repair a bad base level
 ])
 def test_rule_that_would_corrupt_the_world_is_blocked(monkeypatch, corrupt):
@@ -136,7 +135,7 @@ def test_rule_that_would_corrupt_the_world_is_blocked(monkeypatch, corrupt):
 
     monkeypatch.setattr(sim_module, "apply_sanction", corrupting_rule)
     before = snapshot()
-    r = safe_client.post("/actions/sanction", json={"actor": "aurelia", "target": "caldoria"})
+    r = safe_client.post("/actions/sanction", json={"actor": "india", "target": "united-states"})
     assert r.status_code == 500 and r.json() == {"detail": "Internal server error"}
     assert snapshot() == before
     assert simulation.world.events == []
@@ -150,7 +149,7 @@ def test_derived_trade_state_is_repaired_not_rejected(monkeypatch):
         return ActionResult(type="sanction", message="sloppy", effects={})
 
     monkeypatch.setattr(sim_module, "apply_sanction", sloppy_rule)
-    assert post("sanction", "aurelia", "garvonia").status_code == 200
+    assert post("sanction", "india", "japan").status_code == 200
     route = simulation.world.trade_routes[0]
     assert route.volume == route.base_volume > 0
     assert_world_sane()
@@ -159,11 +158,11 @@ def test_derived_trade_state_is_repaired_not_rejected(monkeypatch):
 def test_world_still_works_after_a_blocked_corruption(monkeypatch):
     monkeypatch.setattr(
         sim_module, "apply_sanction",
-        lambda w, *_: (setattr(find_country(w, "caldoria"), "gdp", -1.0), ActionResult("sanction", "x"))[1],
+        lambda w, *_: (setattr(find_country(w, "united-states"), "gdp", -1.0), ActionResult("sanction", "x"))[1],
     )
-    assert safe_client.post("/actions/sanction", json={"actor": "aurelia", "target": "caldoria"}).status_code == 500
+    assert safe_client.post("/actions/sanction", json={"actor": "india", "target": "united-states"}).status_code == 500
     monkeypatch.undo()
-    assert post("sanction", "aurelia", "caldoria").status_code == 200  # server keeps serving valid actions
+    assert post("sanction", "india", "united-states").status_code == 200  # server keeps serving valid actions
     assert_world_sane()
 
 

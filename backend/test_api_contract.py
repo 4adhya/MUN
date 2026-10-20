@@ -48,15 +48,15 @@ def test_world_contains_everything_the_frontend_needs():
     json.dumps(w)  # JSON-serializable
     assert set(w) == {"turn", "countries", "trade_routes", "events"}
     assert w["turn"] == 0 and w["events"] == []
-    assert len(w["countries"]) == 10
+    assert len(w["countries"]) == 8
     ids = [c["id"] for c in w["countries"]]
-    assert len(set(ids)) == 10
+    assert len(set(ids)) == 8
     for c in w["countries"]:
         assert COUNTRY_FIELDS <= set(c)
         assert c["name"] and isinstance(c["gdp"], (int, float)) and 0 <= c["stability"] <= 100
         assert isinstance(c["resources"], dict) and c["resources"]
         assert set(c["relationships"]) == set(ids) - {c["id"]}
-        assert c["sanctions"] == [] and isinstance(c["alliances"], list)  # istoria starts in no alliance
+        assert c["sanctions"] == [] and isinstance(c["alliances"], list)  # the starting world has no sanctions
     assert len(w["trade_routes"]) == 16
     for t in w["trade_routes"]:
         assert ROUTE_FIELDS <= set(t)
@@ -64,13 +64,13 @@ def test_world_contains_everything_the_frontend_needs():
 
 # 3 + 4. country detail -----------------------------------------------------------------
 def test_country_detail():
-    r = client.get("/countries/aurelia")
+    r = client.get("/countries/india")
     assert r.status_code == 200
     c = r.json()
     assert COUNTRY_FIELDS <= set(c)
-    assert c == country(world(), "aurelia")  # same representation as /world, nothing duplicated differently
-    assert client.get("/countries/AURELIA").json() == c
-    assert client.get("/countries/%20Aurelia%20").status_code == 200
+    assert c == country(world(), "india")  # same representation as /world, nothing duplicated differently
+    assert client.get("/countries/INDIA").json() == c
+    assert client.get("/countries/%20India%20").status_code == 200
 
 
 def test_country_unknown_is_404_json():
@@ -81,7 +81,7 @@ def test_country_unknown_is_404_json():
 
 # 5. sanction ---------------------------------------------------------------------------
 def test_sanction_contract():
-    r = post("/actions/sanction", {"actor": "caldoria", "target": "eldoria"})
+    r = post("/actions/sanction", {"actor": "india", "target": "united-states"})
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"event", "actor", "target"}
@@ -89,43 +89,43 @@ def test_sanction_contract():
     assert body["event"]["type"] == "sanction"
     assert COUNTRY_FIELDS <= set(body["actor"]) and COUNTRY_FIELDS <= set(body["target"])
     w = world()
-    assert body["target"] == country(w, "eldoria")  # response matches /world
-    assert "caldoria" in country(w, "eldoria")["sanctions"]
-    assert route(w, "route-04")["active"] is False
+    assert body["target"] == country(w, "united-states")  # response matches /world
+    assert "india" in country(w, "united-states")["sanctions"]
+    assert route(w, "route-01")["active"] is False
     assert len(w["events"]) == 1
 
 
 # 6. alliance ----------------------------------------------------------------------------
 def test_alliance_contract():
-    r = post("/actions/alliance", {"actor": "garvonia", "target": "fyrnia"})
+    r = post("/actions/alliance", {"actor": "china", "target": "japan"})
     assert r.status_code == 200
     body = r.json()
     assert body["event"]["type"] == "alliance" and EVENT_FIELDS <= set(body["event"])
     w = world()
-    assert body["actor"] == country(w, "garvonia") and body["target"] == country(w, "fyrnia")
-    assert "Fyrnia-Garvonia Alliance" in country(w, "fyrnia")["alliances"]
-    assert route(w, "route-08")["volume"] > route(w, "route-08")["base_volume"]
+    assert body["actor"] == country(w, "china") and body["target"] == country(w, "japan")
+    assert "China-Japan Alliance" in country(w, "japan")["alliances"]
+    assert route(w, "route-04")["volume"] > route(w, "route-04")["base_volume"]
 
 
 # 7. aid -------------------------------------------------------------------------------------
 def test_aid_contract():
     before = world()
-    r = post("/actions/aid", {"actor": "aurelia", "target": "istoria", "amount": 100})
+    r = post("/actions/aid", {"actor": "india", "target": "brazil", "amount": 100})
     assert r.status_code == 200
     body = r.json()
     assert body["event"]["type"] == "aid" and EVENT_FIELDS <= set(body["event"])
     w = world()
-    assert body["target"] == country(w, "istoria")
-    assert country(w, "istoria")["gdp"] > country(before, "istoria")["gdp"]
-    assert country(w, "aurelia")["gdp"] < country(before, "aurelia")["gdp"]
+    assert body["target"] == country(w, "brazil")
+    assert country(w, "brazil")["gdp"] > country(before, "brazil")["gdp"]
+    assert country(w, "india")["gdp"] < country(before, "india")["gdp"]
 
 
 # 8. events ------------------------------------------------------------------------------------
 def test_events_feed():
     assert client.get("/events").json() == []
-    post("/actions/sanction", {"actor": "aurelia", "target": "caldoria"})
-    post("/actions/alliance", {"actor": "garvonia", "target": "fyrnia"})
-    post("/actions/aid", {"actor": "helvaris", "target": "istoria", "amount": 50})
+    post("/actions/sanction", {"actor": "india", "target": "united-states"})
+    post("/actions/alliance", {"actor": "china", "target": "japan"})
+    post("/actions/aid", {"actor": "france", "target": "brazil", "amount": 50})
     feed = client.get("/events").json()
     assert [e["type"] for e in feed] == ["aid", "alliance", "sanction"]  # newest first
     assert [e["id"] for e in feed] == [3, 2, 1]
@@ -141,9 +141,9 @@ def test_events_feed():
 # 9. reset ----------------------------------------------------------------------------------------
 def test_reset_restores_everything():
     original = client.post("/simulation/reset").json()
-    post("/actions/sanction", {"actor": "caldoria", "target": "eldoria"})
-    post("/actions/alliance", {"actor": "garvonia", "target": "fyrnia"})
-    post("/actions/aid", {"actor": "aurelia", "target": "istoria", "amount": 100})
+    post("/actions/sanction", {"actor": "india", "target": "united-states"})
+    post("/actions/alliance", {"actor": "china", "target": "japan"})
+    post("/actions/aid", {"actor": "india", "target": "brazil", "amount": 100})
     assert world() != original
     again = client.post("/simulation/reset").json()
     assert again == original == world()
@@ -154,18 +154,18 @@ def test_reset_restores_everything():
 
 # 10. errors ---------------------------------------------------------------------------------------
 @pytest.mark.parametrize("path,body,status", [
-    ("/actions/sanction", {"actor": "ghost", "target": "aurelia"}, 404),
-    ("/actions/alliance", {"actor": "aurelia", "target": "ghost"}, 404),
-    ("/actions/aid", {"actor": "ghost", "target": "aurelia", "amount": 10}, 404),
-    ("/actions/sanction", {"actor": "aurelia", "target": "aurelia"}, 400),
-    ("/actions/alliance", {"actor": "aurelia", "target": "aurelia"}, 400),
-    ("/actions/aid", {"actor": "aurelia", "target": "aurelia", "amount": 10}, 400),
-    ("/actions/aid", {"actor": "aurelia", "target": "istoria", "amount": 0}, 400),
-    ("/actions/aid", {"actor": "aurelia", "target": "istoria", "amount": -5}, 400),
-    ("/actions/aid", {"actor": "aurelia", "target": "istoria", "amount": 99999}, 400),
-    ("/actions/aid", {"actor": "aurelia", "target": "istoria", "amount": "lots"}, 422),
-    ("/actions/aid", {"actor": "aurelia", "target": "istoria"}, 422),
-    ("/actions/sanction", {"actor": "aurelia"}, 422),
+    ("/actions/sanction", {"actor": "ghost", "target": "india"}, 404),
+    ("/actions/alliance", {"actor": "india", "target": "ghost"}, 404),
+    ("/actions/aid", {"actor": "ghost", "target": "india", "amount": 10}, 404),
+    ("/actions/sanction", {"actor": "india", "target": "india"}, 400),
+    ("/actions/alliance", {"actor": "india", "target": "india"}, 400),
+    ("/actions/aid", {"actor": "india", "target": "india", "amount": 10}, 400),
+    ("/actions/aid", {"actor": "india", "target": "brazil", "amount": 0}, 400),
+    ("/actions/aid", {"actor": "india", "target": "brazil", "amount": -5}, 400),
+    ("/actions/aid", {"actor": "india", "target": "brazil", "amount": 99999}, 400),
+    ("/actions/aid", {"actor": "india", "target": "brazil", "amount": "lots"}, 422),
+    ("/actions/aid", {"actor": "india", "target": "brazil"}, 422),
+    ("/actions/sanction", {"actor": "india"}, 422),
     ("/actions/sanction", {}, 422),
 ])
 def test_error_status_codes_and_shape(path, body, status):
@@ -179,18 +179,18 @@ def test_error_status_codes_and_shape(path, body, status):
 
 
 def test_duplicate_actions_are_409():
-    assert post("/actions/sanction", {"actor": "aurelia", "target": "caldoria"}).status_code == 200
-    r = post("/actions/sanction", {"actor": "aurelia", "target": "caldoria"})
+    assert post("/actions/sanction", {"actor": "india", "target": "united-states"}).status_code == 200
+    r = post("/actions/sanction", {"actor": "india", "target": "united-states"})
     assert r.status_code == 409 and isinstance(r.json()["detail"], str)
-    assert post("/actions/alliance", {"actor": "garvonia", "target": "fyrnia"}).status_code == 200
-    assert post("/actions/alliance", {"actor": "garvonia", "target": "fyrnia"}).status_code == 409
+    assert post("/actions/alliance", {"actor": "china", "target": "japan"}).status_code == 200
+    assert post("/actions/alliance", {"actor": "china", "target": "japan"}).status_code == 409
 
 
 @pytest.mark.parametrize("raw", [
-    '{"actor": "aurelia", "target": "istoria", "amount": NaN}',
-    '{"actor": "aurelia", "target": "istoria", "amount": Infinity}',
-    '{"actor": "aurelia", "target": "istoria", "amount": -Infinity}',
-    '{"actor": "aurelia", "target": "istoria", "amount": 1e999}',
+    '{"actor": "india", "target": "brazil", "amount": NaN}',
+    '{"actor": "india", "target": "brazil", "amount": Infinity}',
+    '{"actor": "india", "target": "brazil", "amount": -Infinity}',
+    '{"actor": "india", "target": "brazil", "amount": 1e999}',
     "not json",
     "",
     "[]",
@@ -217,7 +217,7 @@ def test_unexpected_error_is_json_500_without_traceback(monkeypatch):
 
     monkeypatch.setattr(simulation, "sanction", boom)
     safe = TestClient(app, raise_server_exceptions=False)
-    r = safe.post("/actions/sanction", json={"actor": "aurelia", "target": "caldoria"})
+    r = safe.post("/actions/sanction", json={"actor": "india", "target": "united-states"})
     assert r.status_code == 500
     assert r.json() == {"detail": "Internal server error"}
     assert "secret" not in r.text and "Traceback" not in r.text
@@ -226,15 +226,16 @@ def test_unexpected_error_is_json_500_without_traceback(monkeypatch):
 # 11. trade behaviour still works through the API ---------------------------------------------------
 def test_trade_behaviour_through_api():
     before = world()
-    post("/actions/sanction", {"actor": "caldoria", "target": "eldoria"})
-    post("/actions/alliance", {"actor": "garvonia", "target": "fyrnia"})
+    post("/actions/sanction", {"actor": "india", "target": "united-states"})
+    post("/actions/alliance", {"actor": "china", "target": "japan"})
+    post("/actions/alliance", {"actor": "france", "target": "united-kingdom"})
     after = world()
-    for rid in ("route-04", "route-05"):
+    for rid in ("route-01", "route-02"):  # india <-> united-states, both directions
         assert route(after, rid)["active"] is False and route(after, rid)["volume"] == 0
-    for rid in ("route-08", "route-09"):
+    for rid in ("route-04", "route-07"):  # china->japan, france->united-kingdom
         assert route(after, rid)["efficiency"] == 110 and route(after, rid)["volume"] > route(before, rid)["volume"]
-    assert route(after, "route-01") == route(before, "route-01")
-    assert "eldoria" not in country(after, "caldoria")["trade_partners"]
+    assert route(after, "route-09") == route(before, "route-09")  # russia->china: unrelated
+    assert "united-states" not in country(after, "india")["trade_partners"]
 
 
 # CORS ----------------------------------------------------------------------------------------------------
@@ -288,7 +289,7 @@ def test_frontend_workflow():
     start = client.get("/world").json()                                   # 2. load the map
     a, b = start["countries"][0]["id"], start["countries"][2]["id"]       # 3. pick two countries
     assert post("/actions/sanction", {"actor": a, "target": b}).status_code == 200       # 4.
-    assert post("/actions/aid", {"actor": a, "target": start["countries"][8]["id"], "amount": 20}).status_code == 200
+    assert post("/actions/aid", {"actor": a, "target": start["countries"][7]["id"], "amount": 20}).status_code == 200
     mid = client.get("/world").json()                                     # 5. refresh the map
     assert mid != start and len(mid["events"]) == 2
     feed = client.get("/events").json()                                   # 6. diplomacy feed

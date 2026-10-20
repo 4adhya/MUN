@@ -17,19 +17,19 @@ def test_world():
     w = client.get("/world").json()
     assert w["turn"] == 0
     assert w["events"] == []
-    assert len(w["countries"]) == 10
+    assert len(w["countries"]) == 8
     assert len(w["trade_routes"]) > 0
     required = {"id", "name", "gdp", "stability", "resources",
                 "trade_partners", "alliances", "sanctions", "relationships"}
     for c in w["countries"]:
         assert required <= set(c), c["id"]
-        assert len(c["relationships"]) == 9
+        assert len(c["relationships"]) == 7  # every other country
 
 
 def test_country():
-    r = client.get("/countries/aurelia")
-    assert r.status_code == 200 and r.json()["id"] == "aurelia"
-    assert client.get("/countries/AURELIA").status_code == 200
+    r = client.get("/countries/india")
+    assert r.status_code == 200 and r.json()["id"] == "india"
+    assert client.get("/countries/INDIA").status_code == 200
     assert client.get("/countries/atlantis").status_code == 404
 
 

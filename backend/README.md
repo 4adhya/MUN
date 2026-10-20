@@ -1,7 +1,7 @@
 # MUN Simulation Backend
 
-Backend for the MUN geopolitical simulation. It owns the world: 10 fictional countries with GDP, stability, resources,
-relationships, alliances, sanctions and trade routes. Players (the React frontend, or AI agents) act through a small
+Backend for the MUN geopolitical simulation. It owns the world: 8 real countries (India, United States, China, France, United Kingdom, Russia, Japan, Brazil)
+with illustrative GDP, stability, resources, relationships, alliances, sanctions and trade routes. Players (the React frontend, or AI agents) act through a small
 REST API: **sanction**, **ally**, **send aid**. Each action changes the world by fixed rules and is logged as a diplomacy event.
 State is in memory only (no database); everything is deterministic.
 
@@ -16,7 +16,7 @@ Python 3.10+ · FastAPI · Pydantic v2 · Uvicorn · pytest (tests only)
 backend/
   main.py             FastAPI app, CORS, error handlers, routes (HTTP layer only)
   models.py           Pydantic models: Country, TradeRoute, DiplomacyEvent, requests/responses, WorldState
-  countries.py        Initial fictional world: countries, alliances, trade routes, starting relationships
+  countries.py        Starting world: the 8 countries, (empty) alliances, trade routes, starting relationships
   rules.py            Tuning constants, apply_sanction / apply_alliance / apply_aid, trade recalculation, validate_world
   simulation.py       Simulation: owns the WorldState, runs actions atomically, event history, reset
   mun/                MUN domain layer (Phase 1): enums, Conference, Participant, CommitteeConfig, MUNWorldMetrics
@@ -53,8 +53,8 @@ State lives in memory: restarting the server or calling `POST /simulation/reset`
 
 ## API contract
 
-All bodies are JSON. Country ids are lowercase slugs (`aurelia, brevania, caldoria, dravenia, eldoria, fyrnia, garvonia, helvaris, istoria, jorvania`);
-action requests trim and lower-case ids, so `" Aurelia "` works. Unknown extra fields in action bodies are rejected (422).
+All bodies are JSON. Country ids are lowercase slugs (`india, united-states, china, france, united-kingdom, russia, japan, brazil`);
+action requests trim and lower-case ids, so `" India "` works. Unknown extra fields in action bodies are rejected (422).
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -76,23 +76,23 @@ Returns everything needed to render the map. `events` is the full history, **old
   "turn": 0,
   "countries": [
     {
-      "id": "eldoria", "name": "Eldoria", "gdp": 520.0, "stability": 68,
-      "resources": {"food": 70, "oil": 35, "tech": 30},
-      "trade_partners": ["caldoria", "helvaris"],
-      "alliances": ["Meridian Pact"],
+      "id": "india", "name": "India", "country_code": "IN", "flag": "🇮🇳", "gdp": 3900.0, "stability": 74,
+      "resources": {"food": 75, "tech": 60, "minerals": 55, "energy": 45},
+      "trade_partners": ["brazil", "china", "france", "russia", "united-states"],
+      "alliances": [],
       "sanctions": [],
-      "relationships": {"aurelia": 0, "caldoria": 43, "istoria": -25, "...": 0}
+      "relationships": {"united-states": 30, "china": -14, "russia": 18, "...": 0}
     }
   ],
   "trade_routes": [
-    {"id": "route-04", "exporter": "caldoria", "importer": "eldoria", "resource": "oil",
-     "volume": 35, "active": true, "base_volume": 35, "efficiency": 100}
+    {"id": "route-02", "exporter": "united-states", "importer": "india", "resource": "energy",
+     "volume": 25, "active": true, "base_volume": 25, "efficiency": 100}
   ],
   "events": []
 }
 ```
 
-- `gdp`: billions of fictional dollars. `stability`: 0-100. `resources`: stockpile index 0-100.
+- `gdp`: billions of illustrative simulation dollars (not live economic data). `stability`: 0-100. `resources`: stockpile index 0-100.
 - `relationships[other_id]`: -100 (hostile) to 100 (friendly), symmetric, one entry per other country.
 - `sanctions`: ids of countries that currently sanction THIS country. `trade_partners`: derived from ACTIVE routes.
 - Trade route: `volume` is the CURRENT flow = `base_volume * efficiency / 100`. `efficiency` 100 = normal, 110 = allied, 0 = cut off.
@@ -100,13 +100,13 @@ Returns everything needed to render the map. `events` is the full history, **old
 
 ### GET /countries/{country_id}
 
-`GET /countries/eldoria` returns the single country object shown above (identical to its entry in `/world`).
+`GET /countries/india` returns the single country object shown above (identical to its entry in `/world`).
 Case-insensitive. Unknown id: `404 {"detail": "Country 'atlantis' not found"}`.
 
 ### POST /actions/sanction
 
 ```json
-{"actor": "caldoria", "target": "eldoria"}
+{"actor": "india", "target": "united-states"}
 ```
 
 Target loses 3% GDP and 5 stability, relationship drops 25 (both directions), the actor is added to `target.sanctions`,
@@ -116,17 +116,17 @@ Rejected with 409 if the actor already sanctions the target (the opposite direct
 ### POST /actions/alliance
 
 ```json
-{"actor": "garvonia", "target": "fyrnia"}
+{"actor": "china", "target": "japan"}
 ```
 
-Creates a named alliance (`"Fyrnia-Garvonia Alliance"`, ids sorted) recorded on both countries; relationship +20, stability +2 each;
+Creates a named alliance (`"China-Japan Alliance"`, ids sorted) recorded on both countries; relationship +20, stability +2 each;
 active direct routes between them run at efficiency 110. Rejected with 409 if they already share any alliance
-(including a bloc such as the Northern Accord) or if either sanctions the other.
+(the starting world has none) or if either sanctions the other.
 
 ### POST /actions/aid
 
 ```json
-{"actor": "aurelia", "target": "istoria", "amount": 100}
+{"actor": "india", "target": "brazil", "amount": 100}
 ```
 
 `amount` is 1-500 and at most 10% of the actor's GDP. Target gains 40% of the amount as GDP plus stability (+1 to +5);
@@ -150,15 +150,15 @@ A plain JSON array, newest first. Each event:
 
 ```json
 {
-  "id": 1, "turn": 0, "type": "sanction", "actor": "caldoria", "target": "eldoria",
-  "message": "Caldoria imposed sanctions on Eldoria. Eldoria's economy and stability took a hit, and 2 trade route(s) were suspended.",
+  "id": 1, "turn": 0, "type": "sanction", "actor": "india", "target": "united-states",
+  "message": "India imposed sanctions on United States. United States's economy and stability took a hit, and 2 trade route(s) were suspended.",
   "timestamp": "2026-10-16T04:50:50.994783Z",
   "effects": {
-    "target_gdp": {"before": 520.0, "after": 504.4},
-    "target_stability": {"before": 68, "after": 63},
-    "relationship": 18,
-    "trade_routes_deactivated": ["route-04", "route-05"],
-    "trade_routes": {"route-04": {"before": {"active": true, "efficiency": 100, "volume": 35},
+    "target_gdp": {"before": 28800.0, "after": 27936.0},
+    "target_stability": {"before": 82, "after": 77},
+    "relationship": 5,
+    "trade_routes_deactivated": ["route-01", "route-02"],
+    "trade_routes": {"route-01": {"before": {"active": true, "efficiency": 100, "volume": 30},
                                   "after":  {"active": false, "efficiency": 0, "volume": 0}}}
   }
 }
