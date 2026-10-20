@@ -26,6 +26,7 @@ from simulation_bridge import BridgeResult, execute_decision
 # country id -> factory(llm) building that country's agent. Aurelia is the only one so far.
 AGENT_FACTORIES: dict[str, Callable[[Optional[LLM]], CountryAgent]] = {
     "aurelia": lambda llm=None: AureliaAgent(llm=llm),
+    "india": lambda llm=None: AureliaAgent(llm=llm),
 }
 
 NO_INCIDENT_SITUATION = "No new incident. Review the current state and decide whether any action is needed."

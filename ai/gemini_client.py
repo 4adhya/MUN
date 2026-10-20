@@ -23,7 +23,7 @@ from ai.check_gemini import (
     load_env_file,
 )
 
-TEMPERATURE = 0.2  # low: we want consistent, sensible decisions rather than creative ones
+TEMPERATURE = 0.5  # low: we want consistent, sensible decisions rather than creative ones
 JSON_MIME_TYPE = "application/json"
 
 
@@ -42,8 +42,8 @@ def _build_config(system_instruction: str):
     return types.GenerateContentConfig(
         system_instruction=system_instruction,
         response_mime_type="application/json",
-        temperature=0.2,
-        max_output_tokens=2048,
+        temperature=0.5,
+        max_output_tokens=400,
     )
 
 
