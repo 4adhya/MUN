@@ -1,0 +1,156 @@
+/* POLITICA — explicit redesign overrides. Import this AFTER App.css. */
+.select-screen {
+  max-width: 1600px !important;
+  padding: 54px clamp(22px, 4vw, 64px) 36px !important;
+  color: #eef3fa !important;
+}
+.select-screen .page-heading {
+  padding: 0 0 28px !important;
+  margin-bottom: 28px !important;
+  border-bottom: 1px solid #25364a !important;
+  align-items: end !important;
+}
+.select-screen .page-heading .eyebrow {
+  color: #8ba5c2 !important;
+  font-size: 10px !important;
+  letter-spacing: 2.2px !important;
+}
+.select-screen .page-heading h1 {
+  font-size: clamp(34px, 4vw, 52px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -1.8px !important;
+  font-weight: 600 !important;
+  margin: 15px 0 10px !important;
+}
+.select-screen .page-heading p {
+  font-size: 14px !important;
+  color: #91a2b7 !important;
+}
+.select-screen .step-pill,
+.select-screen .count-pill {
+  background: #0b1726 !important;
+  border: 1px solid #35465a !important;
+  border-radius: 4px !important;
+  padding: 10px 13px !important;
+  color: #b7c5d6 !important;
+  letter-spacing: 1px !important;
+}
+.select-screen .selection-layout {
+  grid-template-columns: minmax(330px, 0.76fr) minmax(0, 1.5fr) !important;
+  gap: 22px !important;
+  align-items: stretch !important;
+}
+.select-screen .panel {
+  padding: clamp(18px, 2vw, 28px) !important;
+  background: #0a1421 !important;
+  border: 1px solid #2b3a4d !important;
+  border-radius: 7px !important;
+  box-shadow: none !important;
+}
+.select-screen .panel-heading {
+  margin-bottom: 22px !important;
+  align-items: center !important;
+}
+.select-screen .panel-heading h2 {
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.25px !important;
+  color: #edf2f8 !important;
+}
+.select-screen .panel-heading p {
+  font-size: 12px !important;
+  color: #8495a9 !important;
+  margin-top: 6px !important;
+}
+.select-screen .search-box {
+  height: 49px !important;
+  border: 1px solid #34465a !important;
+  border-radius: 5px !important;
+  background: #07111d !important;
+  padding: 0 14px !important;
+  color: #93a7bd !important;
+}
+.select-screen .search-box:focus-within {
+  border-color: #5a8fc4 !important;
+  box-shadow: 0 0 0 3px #4e8bc21c !important;
+}
+.select-screen .search-box input { font-size: 13px !important; color: #f0f4f9 !important; }
+.select-screen .search-box input::placeholder { color: #71849b !important; }
+.select-screen .country-list {
+  gap: 5px !important;
+  margin-top: 16px !important;
+  max-height: 590px !important;
+  overflow-y: auto !important;
+  padding-right: 4px !important;
+  scrollbar-color: #354b63 #0a1421 !important;
+}
+.select-screen .country-option {
+  min-height: 61px !important;
+  padding: 11px 12px !important;
+  gap: 12px !important;
+  border: 1px solid transparent !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  transition: background .16s ease, border-color .16s ease !important;
+}
+.select-screen .country-option:hover {
+  background: #101f30 !important;
+  border-color: #263c53 !important;
+}
+.select-screen .country-option.selected {
+  background: #11253a !important;
+  border-color: #3977ad !important;
+}
+.select-screen .country-option .flag { font-size: 21px !important; width: 27px !important; }
+.select-screen .country-option-copy b { font-size: 13px !important; font-weight: 600 !important; color: #e7edf5 !important; }
+.select-screen .country-option-copy small { font-size: 11px !important; color: #8294a9 !important; margin-top: 4px !important; }
+.select-screen .country-status { font-size: 10px !important; color: #93a3b6 !important; }
+.select-screen .country-status i { width: 6px !important; height: 6px !important; }
+.select-screen .map-selection .world-graphic,
+.select-screen .map-selection > div:not(.panel-heading):not(.selected-country-card) {
+  border-radius: 5px !important;
+}
+.select-screen .map-selection > .world-graphic,
+.select-screen .map-selection > .map-container,
+.select-screen .map-selection > div:has(canvas),
+.select-screen .map-selection > div:has(svg) {
+  border: 1px solid #29465f !important;
+  overflow: hidden !important;
+  background: #071827 !important;
+}
+.select-screen .selected-country-card {
+  margin-top: 18px !important;
+  padding: 17px 18px !important;
+  border: 1px solid #2c4055 !important;
+  border-radius: 5px !important;
+  background: #0d1a29 !important;
+  gap: 15px !important;
+}
+.select-screen .selected-country-card .flag-large { font-size: 31px !important; width: 42px !important; }
+.select-screen .selected-country-card small { color: #8ba7c5 !important; font-size: 9px !important; letter-spacing: 1.6px !important; }
+.select-screen .selected-country-card h3 { color: #f0f4fa !important; font-size: 18px !important; margin: 5px 0 !important; }
+.select-screen .selected-country-card p { color: #91a2b7 !important; font-size: 11px !important; }
+.select-screen .selected-country-card .button {
+  background: #176bc0 !important;
+  border: 1px solid #3986d6 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  min-height: 42px !important;
+}
+.select-screen .selected-country-card .button:hover { background: #227ed8 !important; }
+.select-screen .picker-footer,
+.select-screen .page-footnote { color: #71849a !important; font-size: 10px !important; }
+.select-screen .page-footnote { border-top: 1px solid #223347 !important; padding-top: 17px !important; }
+@media (max-width: 1000px) {
+  .select-screen .selection-layout { grid-template-columns: 1fr !important; }
+  .select-screen .country-list { max-height: 420px !important; }
+}
+@media (max-width: 620px) {
+  .select-screen { padding: 30px 16px 24px !important; }
+  .select-screen .page-heading { align-items: flex-start !important; gap: 12px !important; }
+  .select-screen .page-heading h1 { font-size: 34px !important; }
+  .select-screen .panel { padding: 16px !important; }
+  .select-screen .selected-country-card { flex-wrap: wrap !important; }
+  .select-screen .selected-country-card .button { width: 100% !important; }
+  .select-screen .country-status { display: none !important; }
+}

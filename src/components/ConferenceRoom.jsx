@@ -9,7 +9,13 @@ import {
   Clock3,
   Handshake,
   HeartHandshake,
+  Hand,
+  Mic,
   MessageSquare,
+  Radio,
+  Send,
+  ThumbsUp,
+  UserRound,
   Shield,
   Swords,
   TrendingUp,
@@ -356,377 +362,314 @@ const approveAIProposal = async () => {
     setActionLoading(false);
   }
 };
-  return (
-    <main className="conference-page">
-      <header className="conference-heading">
-        <div>
-          <div className="conference-eyebrow">
-            <span className="conference-live-dot" />
-            DIPLOMATIC CONFERENCE
-            <span className="conference-mode">FICTIONAL SCENARIO</span>
-          </div>
-          <h1>The sanctions crisis</h1>
-          <p>
-            You represent {country.name}. Your decisions will shape the
-            diplomatic response to the opening move.
-          </p>
-        </div>
 
-        <button className="conference-exit" onClick={onExit}>
-          <X size={15} /> Exit conference
-        </button>
+
+  // UI-only state for the cinematic conference-room presentation.
+  const [raisedHand, setRaisedHand] = useState(false);
+  const [quickNotes, setQuickNotes] = useState("");
+  const [roomModal, setRoomModal] = useState("");
+  const [roomTarget, setRoomTarget] = useState(opening.opponent);
+  const [roomDraft, setRoomDraft] = useState("");
+  const [roomToast, setRoomToast] = useState("");
+
+  const notifyRoom = (message) => {
+    setRoomToast(message);
+    window.setTimeout(() => setRoomToast(""), 2800);
+  };
+
+  const chamberRoster = [
+    { name: opening.opponent, flag: opening.flag, role: "Current speaker" },
+    { name: country.name, flag: country.flag || "🌐", role: "Your delegation" },
+    { name: "France", flag: "🇫🇷", role: "Delegate" },
+    { name: "Germany", flag: "🇩🇪", role: "Delegate" },
+    { name: "China", flag: "🇨🇳", role: "Delegate" },
+    { name: "Brazil", flag: "🇧🇷", role: "Delegate" },
+    { name: "India", flag: "🇮🇳", role: "Delegate" },
+    { name: "Russia", flag: "🇷🇺", role: "Delegate" },
+    { name: "Japan", flag: "🇯🇵", role: "Delegate" },
+    { name: "Canada", flag: "🇨🇦", role: "Delegate" },
+    { name: "Australia", flag: "🇦🇺", role: "Delegate" },
+    { name: "Italy", flag: "🇮🇹", role: "Delegate" },
+    { name: "South Africa", flag: "🇿🇦", role: "Delegate" },
+    { name: "South Korea", flag: "🇰🇷", role: "Delegate" },
+  ].filter((delegate, index, list) =>
+    list.findIndex((item) => item.name === delegate.name) === index
+  ).slice(0, 14);
+
+  const roomTargetCountries = [
+    { name: "Afghanistan", flag: "🇦🇫" },
+    { name: "Argentina", flag: "🇦🇷" },
+    { name: "Australia", flag: "🇦🇺" },
+    { name: "Brazil", flag: "🇧🇷" },
+    { name: "Canada", flag: "🇨🇦" },
+    { name: "China", flag: "🇨🇳" },
+    { name: "France", flag: "🇫🇷" },
+    { name: "Germany", flag: "🇩🇪" },
+    { name: "India", flag: "🇮🇳" },
+    { name: "Japan", flag: "🇯🇵" },
+    { name: "Russia", flag: "🇷🇺" },
+    { name: "South Africa", flag: "🇿🇦" },
+    { name: "United Kingdom", flag: "🇬🇧" },
+    { name: "United States", flag: "🇺🇸" },
+  ].filter((item) => item.name !== country.name);
+
+  const addRoomEvent = (event) => {
+    setTimeline((items) => [{ id: Date.now(), ...event }, ...items]);
+  };
+
+  const handleRaiseHand = () => {
+    const nextRaised = !raisedHand;
+    setRaisedHand(nextRaised);
+    if (nextRaised) {
+      addRoomEvent({
+        type: "player",
+        actor: country.name,
+        flag: country.flag || "🌐",
+        title: "Requested to speak",
+        detail: `${country.name} raised a hand to request the floor.`,
+        time: `Turn ${turn} · Just now`,
+      });
+      notifyRoom(`${country.name} requested the floor.`);
+    } else {
+      notifyRoom("Your raised hand was lowered.");
+    }
+  };
+
+  const handleSupport = () => {
+    addRoomEvent({
+      type: "player",
+      actor: country.name,
+      flag: country.flag || "🌐",
+      title: "Supported the current statement",
+      detail: `${country.name} signalled support during the discussion of ${opening.issue.toLowerCase()}.`,
+      time: `Turn ${turn} · Just now`,
+    });
+    notifyRoom(`${country.name} signalled support.`);
+  };
+
+  const submitRoomAction = async (event) => {
+    event.preventDefault();
+    const kind = roomModal;
+
+    if (kind === "statement") {
+      const statement = roomDraft.trim();
+      if (!statement) return;
+      addRoomEvent({
+        type: "player",
+        actor: country.name,
+        flag: country.flag || "🌐",
+        title: "Made a statement",
+        detail: statement,
+        time: `Turn ${turn} · Just now`,
+      });
+      setRoomDraft("");
+      setRoomModal("");
+      notifyRoom(`${country.name}'s statement was added to the proceedings.`);
+      return;
+    }
+
+    if (!roomTarget || roomTarget === country.name) {
+      notifyRoom("Choose another country for this proposal.");
+      return;
+    }
+
+    setActionLoading(true);
+    setActionMessage("");
+    try {
+      const actorId = toCountryId(country.name);
+      const targetId = toCountryId(roomTarget);
+      const result = kind === "alliance"
+        ? await alliance(actorId, targetId)
+        : await sanction(actorId, targetId);
+      const title = kind === "alliance"
+        ? `Alliance proposal to ${roomTarget}`
+        : `Sanctions proposal targeting ${roomTarget}`;
+      const detail = result?.event?.message || (kind === "alliance"
+        ? `${country.name} submitted an alliance proposal to ${roomTarget}.`
+        : `${country.name} submitted a sanctions proposal targeting ${roomTarget}.`);
+
+      addRoomEvent({
+        type: "player",
+        actor: country.name,
+        flag: country.flag || "🌐",
+        title,
+        detail,
+        time: `Turn ${turn} · Just now`,
+      });
+      await Promise.all([getWorld(), getEvents()]);
+      setRoomModal("");
+      setRoomDraft("");
+      notifyRoom(detail);
+    } catch (error) {
+      notifyRoom(error?.message || "The proposal could not be submitted.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+  return (
+    <main className="cr-photo-page">
+      <header className="cr-conference-header">
+        <div className="cr-heading-copy">
+          <div className="cr-eyebrow"><span className="cr-live-dot" /> GLOBAL AFFAIRS / SIMULATION</div>
+          <h1>Conference</h1>
+          <p>Discuss. Negotiate. Build alliances. Shape the world.</p>
+        </div>
+        <div className="cr-header-actions">
+          <span className="cr-turn-pill"><Clock3 size={15} /> TURN {String(turn).padStart(2, "0")}</span>
+          <span className="cr-time-pill"><Radio size={15} /> SESSION LIVE</span>
+          <button className="cr-exit-button" onClick={onExit}><X size={15} /> Exit conference</button>
+        </div>
       </header>
 
-      <section className="conference-statusbar">
-        <div>
-          <span>YOUR DELEGATION</span>
-          <strong>{country.flag} {country.name}</strong>
-        </div>
-        <div>
-          <span>CONFERENCE TURN</span>
-          <strong><Clock3 size={14} /> {String(turn).padStart(2, "0")}</strong>
-        </div>
-        <div>
-          <span>GLOBAL TENSION</span>
-          <strong className={tension >= 60 ? "tension-high" : ""}>
-            {tension}/100
-          </strong>
-        </div>
-        <div>
-          <span>DIPLOMATIC INFLUENCE</span>
-          <strong>{influence}/100</strong>
-        </div>
+      <section className="cr-status-strip" aria-label="Conference status">
+        <div><span>YOUR DELEGATION</span><strong>{country.flag || "🌐"} {country.name}</strong></div>
+        <div><span>CURRENT TOPIC</span><strong>{opening.issue}</strong></div>
+        <div><span>GLOBAL TENSION</span><strong className={tension >= 60 ? "cr-tension-high" : ""}>{tension}/100</strong></div>
+        <div><span>DIPLOMATIC INFLUENCE</span><strong>{influence}/100</strong></div>
       </section>
 
-      <div className="conference-layout">
-        <section className="conference-main-column">
-          {showOpening && (
-            <article className="opening-crisis">
-              <div className="opening-crisis-top">
-                <div className="opening-icon">
-                  <AlertTriangle size={21} />
+      <section className="cr-chamber-scene" aria-label="Diplomatic conference chamber">
+        <div className="cr-scene-overlay" />
+
+        <div className="cr-wall-screen cr-topic-screen">
+          <span>CURRENT TOPIC</span>
+          <strong>{opening.issue}</strong>
+          <div className="cr-wall-map-art" aria-hidden="true">
+            <svg viewBox="0 0 260 90" role="img" aria-label="Decorative world map illustration">
+              <g fill="#1b6590" stroke="#47b8ec" strokeWidth=".8" opacity=".86">
+                <path d="M8 24 23 13 47 16 56 27 46 36 41 47 29 42 22 32 12 34Z" />
+                <path d="M48 48 63 52 72 66 66 82 58 74 56 62Z" />
+                <path d="M94 24 108 17 125 20 137 14 155 20 171 17 184 25 201 22 218 31 238 30 249 40 232 48 216 43 201 50 185 44 174 53 155 46 142 55 130 46 118 48 106 39 97 39Z" />
+                <path d="M147 48 162 47 171 60 165 76 154 83 146 69Z" />
+                <path d="M205 55 220 51 235 58 241 69 231 76 216 70Z" />
+              </g>
+              <g stroke="#4ccaff" strokeWidth=".7" fill="none" opacity=".75">
+                <path d="M34 27 Q111 -3 154 28 T226 37" />
+                <path d="M63 65 Q132 24 191 61" />
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <div className="cr-wall-screen cr-tension-screen">
+          <span>GLOBAL TENSION</span>
+          <strong className="cr-screen-tension">{tension >= 60 ? "HIGH" : tension >= 40 ? "MODERATE" : "LOW"}</strong>
+          <div className="cr-tension-chart" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>
+          <div className="cr-tension-legend"><span><i className="high" /> High</span><span><i className="moderate" /> Moderate</span><span><i className="low" /> Low</span></div>
+        </div>
+
+        <div className="cr-speech-bubble" key={`${opening.opponent}-${turn}`}>
+          <div className="cr-speech-bubble-heading"><span className="cr-flag-large">{opening.flag}</span><strong>{opening.opponent}</strong><span className="cr-speaking-dot" /></div>
+          <p>{opening.reason}</p>
+          <small>OPENING STATEMENT · FICTIONAL SCENARIO</small>
+        </div>
+
+        <div className="cr-delegate-rail" aria-label="Delegations in the room">
+          {chamberRoster.map((delegate, index) => {
+            const isSpeaker = delegate.name === opening.opponent;
+            const isYou = delegate.name === country.name;
+            return (
+              <div className={`cr-delegate ${isSpeaker ? "is-speaker" : ""} ${isYou ? "is-you" : ""}`} key={`${delegate.name}-${index}`}>
+                <span className="cr-delegate-avatar"><UserRound size={19} /></span>
+                <span className="cr-delegate-flag">{delegate.flag}</span>
+                <span className="cr-delegate-name">{delegate.name}</span>
+                {isSpeaker && <span className="cr-delegate-status">SPEAKING</span>}
+                {isYou && raisedHand && <span className="cr-hand-badge"><Hand size={13} /> HAND RAISED</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        <aside className="cr-activity-card">
+          <div className="cr-activity-heading"><div><span className="cr-eyebrow">LIVE RECORD</span><h2>Conference activity</h2></div><span className="cr-activity-live"><i /> LIVE</span></div>
+          <div className="cr-activity-list">
+            {timeline.slice(0, 5).map((event) => (
+              <article className="cr-activity-item" key={event.id}>
+                <span className={`cr-activity-marker ${event.type === "player" ? "player" : "opponent"}`} />
+                <div className="cr-activity-item-copy">
+                  <div className="cr-activity-meta"><strong>{event.flag || "🌐"} {event.actor}</strong><time>{event.time}</time></div>
+                  <b>{event.title}</b>
+                  <p>{event.detail}</p>
                 </div>
-                <div>
-                  <span className="conference-section-label">
-                    OPENING MOVE · AI DELEGATION
-                  </span>
-                  <h2>{opening.opponent} imposes sanctions</h2>
-                </div>
-                <span className="crisis-badge">ESCALATION</span>
-                <button
-                  className="conference-icon-button"
-                  aria-label="Dismiss opening summary"
-                  onClick={() => setShowOpening(false)}
-                >
-                  <X size={15} />
-                </button>
-              </div>
-
-              <div className="opening-parties">
-                <div className="opening-party">
-                  <span>{opening.flag}</span>
-                  <div>
-                    <small>INITIATING DELEGATION</small>
-                    <strong>{opening.opponent}</strong>
-                  </div>
-                </div>
-                <ArrowDownRight className="opening-arrow" size={23} />
-                <div className="opening-party target-party">
-                  <span>{country.flag}</span>
-                  <div>
-                    <small>TARGET DELEGATION</small>
-                    <strong>{country.name}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="opening-reason">
-                <span>DISPUTE</span>
-                <strong>{opening.issue}</strong>
-                <p>{opening.reason}</p>
-              </div>
-
-              <div className="opening-demand">
-                <span>THEIR STATED DEMAND</span>
-                <p>“{opening.demand}”</p>
-              </div>
-
-              <div className="fictional-notice">
-                <Shield size={15} />
-                This is a fictional training scenario, not a report of real
-                sanctions or current government policy.
-              </div>
-            </article>
-          )}
-
-          <section className="response-section">
-            <div className="response-heading">
-              <div>
-                <span className="conference-section-label">
-                  YOUR TURN · TURN {String(turn).padStart(2, "0")}
-                </span>
-                <h2>How will you respond?</h2>
-                <p>
-                  Review your advisor’s assessment, then choose your
-                  delegation’s next move.
-                </p>
-              </div>
-              <span className={`turn-state ${phase === "player" ? "your-turn" : ""}`}>
-                {phase === "player" ? (
-                  <><span className="conference-live-dot" /> YOUR DECISION</>
-                ) : (
-                  <><Bot size={14} /> OPPONENT THINKING</>
-                )}
-              </span>
-            </div>
-
-            <div className="advisor-brief">
-              <div className="advisor-brief-icon"><Bot size={20} /></div>
-              <div className="advisor-brief-copy">
-                <div>
-                  <strong>Diplomatic advisor</strong>
-                  <span>STRATEGIC BRIEFING · DEMO</span>
-                </div>
-                <p>
-                  Avoid reacting before weighing the costs. Negotiation may
-                  reduce immediate tension; coalition-building can increase
-                  leverage. Counter-sanctions may demonstrate resolve but
-                  risk further escalation.
-                </p>
-                <button className="advisor-open-link" onClick={onAdvisor}>
-                  Ask your advisor <ArrowRight size={14} />
-                </button>
-              </div>
-              <section className="ai-proposal-panel">
-  <div className="ai-proposal-heading">
-    <div>
-      <span className="conference-section-label">
-        LIVE GEMMA AGENT (via Gemini API)
-      </span>
-
-      <h2>AI diplomatic advisor</h2>
-
-      <p>
-        Generate a recommendation for {country.name} using the
-        current simulation state.
-      </p>
-    </div>
-
-    <span className="ai-status">
-      {aiLoading ? "ANALYZING" : "READY"}
-    </span>
-  </div>
-
-  <button
-    className="ai-proposal-button"
-    onClick={requestAIProposal}
-    disabled={aiLoading || actionLoading}
-  >
-    <Bot size={17} />
-    {aiLoading
-  ? "Waiting for Gemma..."
-  : aiError
-    ? "Retry AI proposal"
-    : "Generate AI proposal"}
-    <ArrowRight size={15} />
-  </button>
-
-  {aiError && (
-    <p className="ai-error" role="alert">
-      {aiError}
-    </p>
-  )}
-
-  {aiProposal && (
-    <div className="ai-proposal-result">
-      <div className="ai-proposal-meta">
-        <span>
-          {aiProposal.used_fallback
-            ? "SAFE FALLBACK"
-            : `GEMMA GENERATED · ${aiProposal.model || "unknown model"}`}
-        </span>
-
-        <strong>
-          {aiProposal.decision.decision.replaceAll("_", " ")}
-        </strong>
-      </div>
-
-      <p className="ai-proposal-reason">
-        {aiProposal.decision.reason}
-      </p>
-
-      <p>
-        <strong>Country:</strong>{" "}
-        {aiProposal.decision.country}
-      </p>
-
-      <p>
-        <strong>Target:</strong>{" "}
-        {aiProposal.decision.target || "No target"}
-      </p>
-
-      {aiProposal.used_fallback && (
-        <p className="ai-error">
-          This is a fallback response, not a Gemma-generated
-          recommendation.
-          {aiProposal.error ? ` ${aiProposal.error}` : ""}
-        </p>
-      )}
-
-      {!aiProposal.used_fallback &&
-        aiProposal.decision.decision !== "NO_ACTION" && (
-          <button
-            className="ai-approve-button"
-            onClick={approveAIProposal}
-            disabled={actionLoading}
-          >
-            <Check size={16} />
-            {actionLoading
-              ? "Executing..."
-              : "Approve & execute"}
-          </button>
-        )}
-
-      {!aiProposal.used_fallback &&
-        aiProposal.decision.decision === "NO_ACTION" && (
-          <p className="ai-no-action">
-            The AI recommends no action. The world state will
-            remain unchanged.
-          </p>
-        )}
-
-      {actionMessage && (
-        <p className="ai-action-message" role="status">
-          {actionMessage}
-        </p>
-      )}
-    </div>
-  )}
-</section>
-            </div>
-
-            <div className="response-grid">
-              {RESPONSE_OPTIONS.map((option, index) => {
-                const Icon = option.icon;
-                return (
-                  <button
-                    key={option.id}
-                    className={`response-card ${option.tone} ${
-                      selectedResponse === option.id ? "response-selected" : ""
-                    }`}
-                    disabled={phase !== "player"}
-                    onClick={() => respond(option)}
-                  >
-                    <span className="response-number">0{index + 1}</span>
-                    <span className="response-icon"><Icon size={20} /></span>
-                    <strong>{option.title}</strong>
-                    <small>{option.subtitle}</small>
-                    <span className="response-choose">
-                      {phase === "opponent" && selectedResponse === option.id
-                        ? "Decision submitted"
-                        : "Choose response"}
-                      <ArrowRight size={14} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {phase === "opponent" && (
-              <div className="opponent-thinking">
-                <span className="thinking-orbit"><Bot size={17} /></span>
-                <div>
-                  <strong>Opponent delegations are responding</strong>
-                  <p>Your decision has been recorded. The opposing delegation is preparing its next move…</p>
-                </div>
-              </div>
-            )}
-
-            {lastResponse && phase === "player" && (
-              <div className="last-decision">
-                <Check size={17} />
-                <div>
-                  <strong>Previous decision: {lastResponse.title}</strong>
-                  <p>{lastResponse.result}</p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="conference-timeline">
-            <div className="conference-panel-heading">
-              <div>
-                <span className="conference-section-label">LIVE RECORD</span>
-                <h2>Conference proceedings</h2>
-              </div>
-              <span>{timeline.length} EVENTS</span>
-            </div>
-
-            <div className="proceedings-list">
-              {timeline.map((event) => (
-                <article className="proceeding" key={event.id}>
-                  <div className={`proceeding-avatar ${event.type}`}>
-                    {event.type === "opponent" ? event.flag : country.flag}
-                  </div>
-                  <div className="proceeding-content">
-                    <div className="proceeding-meta">
-                      <strong>{event.actor}</strong>
-                      <span>{event.time}</span>
-                    </div>
-                    <h3>{event.title}</h3>
-                    <p>{event.detail}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        </section>
-
-        <aside className="conference-side-column">
-          <section className="conference-map-panel">
-            <div className="conference-panel-heading">
-              <div>
-                <span className="conference-section-label">WORLD MONITOR</span>
-                <h2>Diplomatic landscape</h2>
-              </div>
-              <TrendingUp size={17} />
-            </div>
-            <WorldMap
-              selectedCountry={country.name}
-              onCountrySelect={() => {}}
-              height={300}
-            />
-            <div className="conference-map-caption">
-              <span><i className="conference-dot blue-dot" /> Your delegation</span>
-              <span><i className="conference-dot red-dot" /> Sanctions dispute</span>
-            </div>
-          </section>
-
-          <section className="conference-objectives">
-            <span className="conference-section-label">YOUR OBJECTIVES</span>
-            <h2>Protect your national interests</h2>
-            <p>Use diplomacy to pursue your goals while managing escalation risks.</p>
-            {[
-              ["Protect trade", "Limit economic damage"],
-              ["Preserve stability", "Avoid unnecessary escalation"],
-              ["Build influence", "Secure diplomatic support"],
-            ].map(([title, detail], index) => (
-              <div className="objective-row" key={title}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <div><strong>{title}</strong><small>{detail}</small></div>
-              </div>
+              </article>
             ))}
-          </section>
-
-          <section className="conference-rules">
-            <div className="conference-rules-icon"><Handshake size={17} /></div>
-            <div>
-              <strong>Diplomacy is a sequence</strong>
-              <p>Your move changes the situation. Opponents react. You decide again.</p>
-            </div>
-          </section>
+          </div>
         </aside>
-      </div>
+      </section>
+
+      <section className="cr-action-dock">
+        <article className="cr-live-speaker-card">
+          <div className="cr-bottom-card-heading"><span className="cr-live-dot" /> CURRENT SPEAKER</div>
+          <div className="cr-speaker-summary"><span className="cr-speaker-flag">{opening.flag}</span><div><strong>{opening.opponent}</strong><p>{opening.action}: {opening.reason}</p></div></div>
+          <div className="cr-audio-row"><div className="cr-audio-wave" aria-label="Speaker activity animation">{Array.from({ length: 32 }, (_, index) => <i key={index} style={{ "--bar-height": `${8 + ((index * 13) % 24)}px`, "--bar-delay": `${index * 22}ms` }} />)}</div><span className="cr-live-tag"><i /> LIVE</span></div>
+        </article>
+
+        <article className="cr-actions-card">
+          <div className="cr-bottom-card-heading">YOUR ACTIONS <span>TURN {String(turn).padStart(2, "0")}</span></div>
+          <div className="cr-action-buttons">
+            <button className={`cr-action-button ${raisedHand ? "is-active" : ""}`} onClick={handleRaiseHand}><span><Hand size={22} /></span><strong>{raisedHand ? "Lower Hand" : "Raise Hand"}</strong></button>
+            <button className="cr-action-button" onClick={handleSupport}><span><ThumbsUp size={22} /></span><strong>Support</strong></button>
+            <button className="cr-action-button" onClick={() => { setRoomTarget(opening.opponent); setRoomModal("alliance"); }}><span><Handshake size={22} /></span><strong>Propose Alliance</strong></button>
+            <button className="cr-action-button" onClick={() => { setRoomTarget(opening.opponent); setRoomModal("sanctions"); }}><span><Shield size={22} /></span><strong>Propose Sanctions</strong></button>
+            <button className="cr-action-button" onClick={() => { setRoomDraft(""); setRoomModal("statement"); }}><span><MessageSquare size={22} /></span><strong>Make a Statement</strong></button>
+          </div>
+        </article>
+
+        <article className="cr-notes-card">
+          <div className="cr-bottom-card-heading">QUICK NOTES <span><Check size={13} /> SESSION ONLY</span></div>
+          <textarea value={quickNotes} onChange={(event) => setQuickNotes(event.target.value)} placeholder="Write your notes here…" aria-label="Quick notes" />
+          <button className="cr-note-save" onClick={() => notifyRoom("Your notes are saved for this session.")}><Check size={14} /> Keep notes</button>
+        </article>
+      </section>
+
+      <section className="cr-support-grid">
+        <article className="cr-support-panel cr-ai-panel">
+          <div className="cr-support-title"><div><span className="cr-eyebrow">AI DIPLOMATIC ADVISOR</span><h2>Strategic recommendation</h2><p>Generate an AI proposal using the current scenario and your delegation.</p></div><span className={`cr-ai-status ${aiLoading ? "working" : ""}`}>{aiLoading ? "ANALYZING" : "READY"}</span></div>
+          <button className="cr-primary-button" onClick={requestAIProposal} disabled={aiLoading || actionLoading}><Bot size={16} /> {aiLoading ? "Waiting for AI…" : aiError ? "Retry AI proposal" : "Generate AI proposal"} <ArrowRight size={15} /></button>
+          {aiError && <p className="cr-inline-error" role="alert">{aiError}</p>}
+          {aiProposal && (
+            <div className="cr-ai-result">
+              <div className="cr-ai-result-meta"><span>{aiProposal.used_fallback ? "SAFE FALLBACK" : `AI GENERATED · ${aiProposal.model || "MODEL"}`}</span><strong>{aiProposal.decision.decision.replaceAll("_", " ")}</strong></div>
+              <p>{aiProposal.decision.reason}</p>
+              <p><strong>Target:</strong> {aiProposal.decision.target || "No target"}</p>
+              {aiProposal.used_fallback ? <p className="cr-inline-error">This is a fallback response, not an AI-generated recommendation.</p> : aiProposal.decision.decision !== "NO_ACTION" && <button className="cr-primary-button" onClick={approveAIProposal} disabled={actionLoading}><Check size={15} /> {actionLoading ? "Executing…" : "Approve & execute"}</button>}
+              {actionMessage && <p className="cr-action-message" role="status">{actionMessage}</p>}
+            </div>
+          )}
+          <button className="cr-text-button" onClick={onAdvisor}><MessageSquare size={14} /> Open diplomatic advisor</button>
+        </article>
+
+        <article className="cr-support-panel cr-world-panel">
+          <div className="cr-support-title"><div><span className="cr-eyebrow">WORLD MONITOR</span><h2>Diplomatic landscape</h2><p>Explore the map while the session continues.</p></div><TrendingUp size={18} /></div>
+          <WorldMap selectedCountry={country.name} onCountrySelect={() => {}} height={220} />
+          <div className="cr-map-caption"><span><i className="you" /> Your delegation</span><span><i className="tension" /> Sanctions dispute</span></div>
+        </article>
+      </section>
+
+      <details className="cr-response-details">
+        <summary>More diplomatic response options <span>Existing response flow</span></summary>
+        <div className="cr-response-grid">
+          {RESPONSE_OPTIONS.map((option, index) => {
+            const Icon = option.icon;
+            return <button key={option.id} className={`cr-response-option ${option.tone} ${selectedResponse === option.id ? "selected" : ""}`} disabled={phase !== "player"} onClick={() => respond(option)}><span className="cr-response-number">0{index + 1}</span><span className="cr-response-icon"><Icon size={19} /></span><strong>{option.title}</strong><small>{option.subtitle}</small><span className="cr-response-cta">{phase === "opponent" && selectedResponse === option.id ? "Decision submitted" : "Choose response"}<ArrowRight size={13} /></span></button>;
+          })}
+        </div>
+        {phase === "opponent" && <div className="cr-thinking-message"><Bot size={17} /><div><strong>Opponent delegations are responding</strong><p>Your decision has been recorded. The opposing delegation is preparing its next move…</p></div></div>}
+        {lastResponse && phase === "player" && <div className="cr-last-decision"><Check size={16} /><div><strong>Previous decision: {lastResponse.title}</strong><p>{lastResponse.result}</p></div></div>}
+      </details>
+
+      {roomToast && <div className="cr-toast" role="status"><Check size={16} /> {roomToast}</div>}
+
+      {roomModal && (
+        <div className="cr-modal-backdrop" onClick={() => setRoomModal("")}>
+          <form className="cr-action-modal" onSubmit={submitRoomAction} onClick={(event) => event.stopPropagation()}>
+            <div className="cr-modal-heading"><div><span className="cr-eyebrow">DIPLOMATIC ACTION</span><h2>{roomModal === "alliance" ? "Propose an alliance" : roomModal === "sanctions" ? "Propose sanctions" : "Make a statement"}</h2></div><button type="button" className="cr-modal-close" onClick={() => setRoomModal("")} aria-label="Close"><X size={18} /></button></div>
+            {roomModal === "statement" ? <label className="cr-form-label">Your statement<textarea autoFocus rows={5} value={roomDraft} onChange={(event) => setRoomDraft(event.target.value)} placeholder={`The delegation of ${country.name} states…`} required /></label> : <><label className="cr-form-label">Target delegation<select value={roomTarget} onChange={(event) => setRoomTarget(event.target.value)} required>{roomTargetCountries.map((targetCountry) => <option key={targetCountry.name} value={targetCountry.name}>{targetCountry.flag} {targetCountry.name}</option>)}</select></label><p className="cr-modal-note">This is a fictional simulation proposal. It will be sent to your configured simulation backend.</p></>}
+            <div className="cr-modal-actions"><button type="button" className="cr-secondary-button" onClick={() => setRoomModal("")}>Cancel</button><button type="submit" className="cr-primary-button" disabled={actionLoading || (roomModal === "statement" && !roomDraft.trim())}>{actionLoading ? "Submitting…" : roomModal === "statement" ? <><Send size={14} /> Publish statement</> : roomModal === "alliance" ? <><Handshake size={15} /> Send proposal</> : <><Shield size={15} /> Submit proposal</>}</button></div>
+          </form>
+        </div>
+      )}
+
       <OpponentCouncil country={country} />
     </main>
   );
