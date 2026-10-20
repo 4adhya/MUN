@@ -1,4 +1,3 @@
-
 """Starting data for the real-country MUN simulation.
 
 Country names and IDs correspond to real countries. GDP, stability, resources,
@@ -16,11 +15,17 @@ from .rules import (
     clamp_relationship,
 )
 
+def flag_emoji(country_code: str) -> str:
+    """ISO alpha-2 code -> flag emoji (regional-indicator letters), e.g. 'IN' -> flag of India."""
+    return "".join(chr(0x1F1E6 + ord(letter) - ord("A")) for letter in country_code)
+
+
 # GDP is represented in billions of illustrative simulation dollars.
 # Resource values are indexes from 0 to 100.
 _RAW_COUNTRIES: list[dict] = [
     {
         "id": "india",
+        "country_code": "IN",
         "name": "India",
         "gdp": 3900.0,
         "stability": 74,
@@ -28,6 +33,7 @@ _RAW_COUNTRIES: list[dict] = [
     },
     {
         "id": "united-states",
+        "country_code": "US",
         "name": "United States",
         "gdp": 28800.0,
         "stability": 82,
@@ -35,6 +41,7 @@ _RAW_COUNTRIES: list[dict] = [
     },
     {
         "id": "china",
+        "country_code": "CN",
         "name": "China",
         "gdp": 18700.0,
         "stability": 77,
@@ -42,6 +49,7 @@ _RAW_COUNTRIES: list[dict] = [
     },
     {
         "id": "france",
+        "country_code": "FR",
         "name": "France",
         "gdp": 3200.0,
         "stability": 79,
@@ -49,6 +57,7 @@ _RAW_COUNTRIES: list[dict] = [
     },
     {
         "id": "united-kingdom",
+        "country_code": "GB",
         "name": "United Kingdom",
         "gdp": 3600.0,
         "stability": 78,
@@ -56,6 +65,7 @@ _RAW_COUNTRIES: list[dict] = [
     },
     {
         "id": "russia",
+        "country_code": "RU",
         "name": "Russia",
         "gdp": 2200.0,
         "stability": 61,
@@ -63,6 +73,7 @@ _RAW_COUNTRIES: list[dict] = [
     },
     {
         "id": "japan",
+        "country_code": "JP",
         "name": "Japan",
         "gdp": 4000.0,
         "stability": 85,
@@ -70,6 +81,7 @@ _RAW_COUNTRIES: list[dict] = [
     },
     {
         "id": "brazil",
+        "country_code": "BR",
         "name": "Brazil",
         "gdp": 2200.0,
         "stability": 68,
@@ -184,6 +196,7 @@ def build_countries() -> list[Country]:
         countries.append(
             Country(
                 **raw,
+                flag=flag_emoji(raw["country_code"]),
                 trade_partners=sorted(partners[country_id]),
                 alliances=[
                     alliance

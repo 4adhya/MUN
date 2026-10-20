@@ -19,6 +19,7 @@ backend/
   countries.py        Initial fictional world: countries, alliances, trade routes, starting relationships
   rules.py            Tuning constants, apply_sanction / apply_alliance / apply_aid, trade recalculation, validate_world
   simulation.py       Simulation: owns the WorldState, runs actions atomically, event history, reset
+  mun/                MUN domain layer (Phase 1): enums, Conference, Participant, CommitteeConfig, MUNWorldMetrics
   conftest.py         pytest fixture: every test starts from the original world
   test_*.py           Tests (see "Tests")
   requirements.txt
@@ -217,3 +218,18 @@ Each route has `base_volume` (normal level, never changes), `efficiency` (percen
   `simulation.py` runs it after every action. `validate_world` checks the result.
 
 Everything is deterministic: restarting the server always gives the same world.
+
+## MUN domain layer (`backend/mun/`) - Phase 1
+
+Data models only; it sits on top of the geopolitical simulation and never imports it (`backend.models` imports
+`backend.mun.metrics`, not the other way round). No endpoints, phase transitions, voting or persistence yet.
+
+| Module | Contents |
+|--------|----------|
+| `enums.py` | `ConferenceStatus`, `ConferencePhase`, `ParticipantRole`, `Committee` (uppercase string values, exact match) |
+| `models.py` | `Conference`, `Participant` (UTC-aware timestamps, generated ids such as `conf-3fa9c1d2e4b7`) |
+| `committees.py` | `CommitteeConfig`, `COMMITTEE_CONFIGS` (UNSC, GLOBAL_CYBERSECURITY), `get_committee_config()` |
+| `metrics.py` | `MUNWorldMetrics`: six 0-100 metrics; `WorldState.mun_metrics` holds them |
+
+`Country` gained optional `country_code` (ISO alpha-2, e.g. `IN`) and `flag`; `Participant.country_code` uses the same code.
+`WorldState.mun_metrics` is excluded from serialization, so `GET /world` is unchanged until a later phase exposes it.

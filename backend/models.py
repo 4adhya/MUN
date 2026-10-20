@@ -6,10 +6,18 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .mun.metrics import MUNWorldMetrics
+
 
 class Country(BaseModel):
     id: str = Field(description="Stable lowercase slug, e.g. 'aurelia'")
     name: str
+    country_code: Optional[str] = Field(
+        default=None,
+        pattern=r"^[A-Z]{2}$",
+        description="ISO 3166-1 alpha-2 code (e.g. 'IN'); links a MUN delegate to this country. Optional for compatibility.",
+    )
+    flag: Optional[str] = Field(default=None, description="Flag emoji, if known")
     gdp: float = Field(ge=0, description="Gross domestic product in billions of fictional dollars")
     stability: int = Field(ge=0, le=100, description="Internal stability, 0 (collapse) to 100 (rock solid)")
     resources: dict[str, int] = Field(
@@ -111,3 +119,6 @@ class WorldState(BaseModel):
     countries: list[Country]
     trade_routes: list[TradeRoute]
     events: list[DiplomacyEvent] = Field(default_factory=list)
+    # MUN-layer global metrics (0-100). exclude=True keeps the GET /world response
+    # shape unchanged; drop it when a later phase exposes the metrics over the API.
+    mun_metrics: MUNWorldMetrics = Field(default_factory=MUNWorldMetrics, exclude=True)
