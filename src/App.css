@@ -1660,3 +1660,580 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ================================================================
+   POLITICA — REFINED DELEGATION SELECTION OVERRIDES
+   These overrides are intentionally appended so all existing styles
+   and features for the landing page, dashboard, conference room,
+   modals, advisor, and result screens remain in the file.
+   ================================================================ */
+
+.select-screen {
+  max-width: 1540px;
+  padding: 38px clamp(18px, 4.2vw, 64px) 26px;
+  color: #e5eaf1;
+  background: transparent;
+}
+
+.select-screen .page-heading {
+  align-items: flex-end;
+  padding-bottom: 24px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid #273343;
+}
+
+.select-screen .page-heading .eyebrow {
+  color: #8da6c2;
+  font-size: 9px;
+  letter-spacing: 1.7px;
+}
+
+.select-screen .page-heading h1 {
+  margin: 11px 0 7px;
+  color: #f1f4f8;
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(27px, 3vw, 35px);
+  font-weight: 600;
+  letter-spacing: -1.1px;
+}
+
+.select-screen .page-heading p {
+  color: #9ba9ba;
+  font-size: 12px;
+}
+
+.select-screen .step-pill,
+.select-screen .count-pill {
+  border: 1px solid #354355;
+  border-radius: 4px;
+  background: #101a27;
+  color: #d6e0eb;
+  font-size: 9px;
+  letter-spacing: .6px;
+}
+
+.select-screen .step-pill {
+  padding: 9px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.select-screen .selection-layout {
+  grid-template-columns: minmax(330px, .78fr) minmax(0, 1.22fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.select-screen .panel {
+  padding: 21px;
+  border: 1px solid #2a3747;
+  border-radius: 7px;
+  background: #0c1521;
+  box-shadow: none;
+}
+
+.select-screen .panel-heading {
+  align-items: flex-start;
+  margin-bottom: 17px;
+}
+
+.select-screen .panel-heading h2 {
+  color: #e8edf4;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -.2px;
+}
+
+.select-screen .panel-heading p {
+  color: #8796a8;
+  font-size: 10px;
+}
+
+.select-screen .count-pill {
+  white-space: nowrap;
+  color: #aebdce;
+  background: #101b29;
+}
+
+.select-screen .search-box {
+  height: 41px;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #334154;
+  border-radius: 5px;
+  background: #080f19;
+  color: #8d9db0;
+  transition: border-color .18s ease, background .18s ease;
+}
+
+.select-screen .search-box:focus-within {
+  border-color: #6688b2;
+  background: #0b1420;
+}
+
+.select-screen .search-box input {
+  color: #e5ebf3;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+}
+
+.select-screen .search-box input::placeholder {
+  color: #728197;
+}
+
+.select-screen .country-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+  max-height: 500px;
+  margin-top: 12px;
+  overflow-y: auto;
+  padding-right: 3px;
+  scrollbar-color: #39495d #0c1521;
+  scrollbar-width: thin;
+}
+
+.select-screen .country-option {
+  min-height: 57px;
+  gap: 11px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #dfe6ef;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+}
+
+.select-screen .country-option:hover {
+  border-color: #344458;
+  background: #111d2b;
+}
+
+.select-screen .country-option.selected {
+  border-color: #496b93;
+  background: #142235;
+}
+
+.select-screen .country-option .flag {
+  width: 29px;
+  font-size: 20px;
+  filter: saturate(.82);
+}
+
+.select-screen .country-option-copy b {
+  color: #e7edf5;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.select-screen .country-option-copy small {
+  margin-top: 4px;
+  color: #8998aa;
+  font-size: 9px;
+}
+
+.select-screen .country-status {
+  gap: 6px;
+  color: #8796a8;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.select-screen .country-status i {
+  width: 5px;
+  height: 5px;
+  background: #8295aa !important;
+  box-shadow: none;
+}
+
+.select-screen .country-option.selected .country-status i {
+  background: #8bb8ee !important;
+}
+
+.select-screen .country-option.selected .country-status {
+  color: #b9cfe8;
+}
+
+.select-screen .country-option.selected > svg {
+  color: #a8c9ef;
+}
+
+.select-screen .picker-footer {
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid #263445;
+  color: #7f8ea0;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.select-screen .picker-footer svg {
+  flex-shrink: 0;
+  color: #8ea9c8;
+}
+
+.select-screen .map-selection {
+  min-width: 0;
+  background: #0b1420;
+}
+
+.select-screen .map-selection .panel-heading {
+  align-items: center;
+}
+
+.select-screen .map-live {
+  padding: 6px 8px;
+  border: 1px solid #344255;
+  border-radius: 4px;
+  color: #a9b7c8;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.select-screen .map-live i {
+  width: 5px;
+  height: 5px;
+  background: #8da8c5;
+  box-shadow: none;
+}
+
+.select-screen .map-selection .world-graphic {
+  min-height: 320px;
+  flex: 1;
+  border: 1px solid #202f40;
+  border-radius: 4px;
+  background: #09131f;
+}
+
+.select-screen .map-selection .continent-art {
+  min-height: 320px;
+}
+
+/* Quiet the map artwork: neutral land, crisp borders, no bright gradients. */
+.select-screen .map-selection .continent-art rect:first-of-type {
+  fill: #09131f;
+}
+
+.select-screen .map-selection .continent-art rect:nth-of-type(2) {
+  opacity: .22;
+}
+
+.select-screen .map-selection .continent-art > g {
+  fill: #26384b;
+  stroke: #52667b;
+  stroke-width: 1.1;
+}
+
+.select-screen .map-selection .country-map-label rect {
+  fill: #111e2d;
+  stroke: #5b7189;
+}
+
+.select-screen .map-selection .country-map-label text {
+  fill: #e0e8f1;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+}
+
+.select-screen .map-selection .map-legend {
+  border: 1px solid #29394a;
+  border-radius: 4px;
+  background: rgba(8, 17, 27, .94);
+  color: #a4b1c1;
+  font-size: 8px;
+}
+
+.select-screen .map-selection .legend-dot.friendly { background: #8fb8a8; }
+.select-screen .map-selection .legend-dot.neutral { background: #b7a783; }
+.select-screen .map-selection .legend-dot.hostile { background: #c58b91; }
+
+.select-screen .selected-country-card {
+  gap: 13px;
+  margin-top: 13px;
+  padding: 14px;
+  border: 1px solid #2d3b4d;
+  border-radius: 5px;
+  background: #101b29;
+}
+
+.select-screen .selected-country-card .flag-large {
+  width: 38px;
+  font-size: 27px;
+}
+
+.select-screen .selected-country-card small {
+  color: #9aadc3;
+  font-size: 8px;
+  letter-spacing: 1.2px;
+}
+
+.select-screen .selected-country-card h3 {
+  margin: 4px 0;
+  color: #f0f3f7;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.select-screen .selected-country-card p {
+  color: #95a4b6;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.select-screen .selected-country-card .button {
+  min-height: 38px;
+  border: 1px solid #54779f;
+  border-radius: 4px;
+  background: #28486c;
+  box-shadow: none;
+  color: #f0f5fb;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.select-screen .selected-country-card .button:hover {
+  border-color: #7898bd;
+  background: #345778;
+  box-shadow: none;
+  transform: none;
+}
+
+.select-screen .page-footnote {
+  margin-top: 19px;
+  padding-top: 13px;
+  border-top: 1px solid #263343;
+  color: #78889b;
+  font-size: 8px;
+  letter-spacing: .35px;
+}
+
+/* Keep the country-selection layout usable at tablet and mobile sizes. */
+@media (max-width: 1050px) {
+  .select-screen .selection-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .select-screen .country-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 430px;
+  }
+}
+
+@media (max-width: 700px) {
+  .select-screen {
+    padding: 27px 15px 22px;
+  }
+
+  .select-screen .page-heading {
+    align-items: flex-start;
+    gap: 14px;
+    padding-bottom: 19px;
+    margin-bottom: 16px;
+  }
+
+  .select-screen .page-heading h1 {
+    font-size: 27px;
+  }
+
+  .select-screen .panel {
+    padding: 15px;
+  }
+
+  .select-screen .country-list {
+    grid-template-columns: 1fr;
+    max-height: 380px;
+  }
+
+  .select-screen .country-option {
+    min-height: 55px;
+  }
+
+  .select-screen .map-selection .world-graphic,
+  .select-screen .map-selection .continent-art {
+    min-height: 260px;
+  }
+
+  .select-screen .selected-country-card {
+    flex-wrap: wrap;
+  }
+
+  .select-screen .selected-country-card .button {
+    width: 100%;
+  }
+
+  .select-screen .page-footnote {
+    flex-direction: column;
+    line-height: 1.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-screen .country-option,
+  .select-screen .search-box,
+  .select-screen .selected-country-card .button {
+    transition: none !important;
+  }
+}
+
+
+/* POLITICA LANDING HERO: keep the 3D Earth behind the introduction */
+.landing-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.landing-hero .hero-copy {
+  position: relative;
+  z-index: 2;
+}
+
+.landing-hero .hero-map-wrap {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: -3%;
+  bottom: 0;
+  width: 66%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.landing-hero .hero-map-wrap .rotating-earth {
+  width: 100%;
+  max-width: 760px;
+}
+
+.landing-hero .hero-glow {
+  z-index: -1;
+  pointer-events: none;
+}
+
+.landing-hero .floating-label {
+  z-index: 1;
+  opacity: 0.78;
+}
+
+/* Keep the country-selection screen in its original layout */
+.select-screen .selection-earth-background {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .landing-hero {
+    overflow: hidden;
+  }
+
+  .landing-hero .hero-map-wrap {
+    top: 0;
+    right: -34%;
+    bottom: 0;
+    width: 100%;
+    opacity: 0.30;
+  }
+
+  .landing-hero .hero-copy {
+    z-index: 2;
+  }
+}
+
+
+/* ============================================================
+   3D EARTH BACKGROUND — SIMULATION SCREENS ONLY
+   ============================================================ */
+
+/* Keep the public landing page clean: no Earth behind the hero. */
+.landing-hero .hero-map-wrap {
+  display: none !important;
+}
+
+.global-earth-background {
+  position: fixed;
+  z-index: 0;
+  inset: 76px 0 0;
+  width: 100%;
+  height: calc(100vh - 76px);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.34;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 58% 45%, rgba(20, 93, 158, 0.18), transparent 58%);
+}
+
+.global-earth-background .rotating-earth {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  transform: scale(1.18) translateX(8%);
+  transform-origin: center center;
+}
+
+/* Remove the labels/caption that were drawn over the globe. */
+.global-earth-background .earth-caption,
+.global-earth-background .floating-label,
+.hero-map-wrap .floating-label {
+  display: none !important;
+}
+
+/* Decorative globe only; all interface controls remain clickable. */
+.global-earth-background,
+.global-earth-background * {
+  pointer-events: none !important;
+}
+
+.politica-app {
+  position: relative;
+  isolation: isolate;
+  background: radial-gradient(ellipse at 65% 0%, rgba(16, 41, 73, 0.55) 0%, transparent 48%), #061120;
+}
+
+/* Interface layers stay in front of the Earth. */
+.politica-app > .topbar,
+.politica-app > main,
+.politica-app > .simulation-layout,
+.politica-app > .result-screen,
+.politica-app > .advisor-drawer,
+.politica-app > .modal-backdrop,
+.politica-app > .toast {
+  position: relative;
+  z-index: 1;
+}
+
+.politica-app > .topbar {
+  z-index: 10;
+}
+
+/* Translucent panels reveal the globe subtly while preserving readability. */
+.politica-app .panel,
+.politica-app .country-picker,
+.politica-app .map-selection,
+.politica-app .metric-card,
+.politica-app .step-card,
+.politica-app .result-card,
+.politica-app .status-panel,
+.politica-app .event-panel,
+.politica-app .actions-panel {
+  background-color: rgba(7, 22, 38, 0.84);
+  backdrop-filter: blur(7px);
+}
+
+@media (max-width: 768px) {
+  .global-earth-background {
+    inset: 64px 0 0;
+    height: calc(100vh - 64px);
+    opacity: 0.23;
+  }
+
+  .global-earth-background .rotating-earth {
+    transform: scale(1.08) translateX(10%);
+  }
+}

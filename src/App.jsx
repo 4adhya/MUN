@@ -1,4 +1,5 @@
 
+import ScrollReveal from "./components/ScrollReveal";
 import { useEffect, useRef, useState } from "react";
 import Globe from "react-globe.gl";
 import {
@@ -8,6 +9,7 @@ import {
   Clock3, X, ChevronDown, Send, Target
 } from "lucide-react";
 import "./App.css";
+import "./PoliticaRedesign.css";
 import WorldMap from "./components/WorldMap";
 import ConferenceRoom from "./components/ConferenceRoom";
 import { getAllCountryProfiles } from "./data/countries.js";
@@ -403,6 +405,11 @@ export default function App() {
 
   return (
     <div className="politica-app">
+      {/* Persistent animated Earth background shared by every app screen */}
+      <div className="global-earth-background" aria-hidden="true">
+        <RotatingEarth />
+      </div>
+
       <header className="topbar">
         <button className="brand" onClick={() => setScreen("landing")}>
           <span className="brand-symbol"><Globe2 size={22} /></span>
@@ -441,7 +448,6 @@ export default function App() {
             </div>
             <div className="hero-map-wrap">
               <div className="hero-glow" />
-              <RotatingEarth />
               <div className="floating-label label-one"><span className="live-indicator" /> DIPLOMATIC TENSION <b>RISING</b></div>
               <div className="floating-label label-two"><Globe2 size={14} /> GLOBAL OUTLOOK <b>LIVE SIMULATION</b></div>
             </div>
