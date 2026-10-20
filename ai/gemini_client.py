@@ -34,14 +34,19 @@ def _build_client(key: str):
     return genai.Client(api_key=key, http_options=types.HttpOptions(timeout=TIMEOUT_MS))
 
 
+
+
 def _build_config(system_instruction: str):
     from google.genai import types
 
     return types.GenerateContentConfig(
         system_instruction=system_instruction,
-        response_mime_type=JSON_MIME_TYPE,
-        temperature=TEMPERATURE,
+        response_mime_type="application/json",
+        temperature=0.2,
+        max_output_tokens=2048,
     )
+
+
 
 
 def generate_json_text(system_instruction: str, prompt: str) -> str:

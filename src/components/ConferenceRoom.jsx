@@ -1,4 +1,4 @@
-
+import OpponentCouncil from "./OpponentCouncil";
 import { useState } from "react";
 import {
   AlertTriangle,
@@ -275,7 +275,15 @@ const requestAIProposal = async () => {
       situation
     );
 
-    setAiProposal(result);
+    if (result.used_fallback) {
+  setAiProposal(null);
+  setAiError(
+    `Gemma is temporarily unavailable: ${result.error || "No AI response received."} Please try again.`
+  );
+  return;
+}
+
+setAiProposal(result);
   } catch (error) {
     setAiError(
       error.message || "Unable to obtain an AI proposal."
@@ -516,8 +524,10 @@ const approveAIProposal = async () => {
   >
     <Bot size={17} />
     {aiLoading
-      ? "Analyzing situation..."
-      : "Generate AI proposal"}
+  ? "Waiting for Gemma..."
+  : aiError
+    ? "Retry AI proposal"
+    : "Generate AI proposal"}
     <ArrowRight size={15} />
   </button>
 
@@ -717,6 +727,7 @@ const approveAIProposal = async () => {
           </section>
         </aside>
       </div>
+      <OpponentCouncil country={country} />
     </main>
   );
 }
