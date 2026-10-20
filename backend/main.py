@@ -1,4 +1,3 @@
-
 """FastAPI entry point for the WorldEvent geopolitical simulation.
 
 Run from the project root:
@@ -24,10 +23,11 @@ AI_DIR = Path(__file__).resolve().parent.parent / "ai"
 if str(AI_DIR) not in sys.path:
     sys.path.insert(0, str(AI_DIR))
 
-from ai.country_agent import COUNTRY_PROFILES, CountryAgent
+from ai.country_agent import COUNTRY_PROFILES, AgentProfile, CountryAgent
 from ai.fallback import decide_with_fallback
 from ai.gemini_client import resolve_model
 
+from .country_registry import CountryRecord, find_world_country, resolve_country
 from .models import (
     ActionResponse,
     AidRequest,
@@ -160,7 +160,7 @@ def get_world() -> WorldState:
     },
 )
 def get_country(country_id: str) -> Country:
-    country = simulation.get_country(country_id.strip().lower())
+    country = find_world_country(simulation.world, country_id)
 
     if country is None:
         raise HTTPException(
@@ -199,6 +199,32 @@ class AIProposalRequest(BaseModel):
     )
 
 
+def profile_from_record(record: CountryRecord) -> AgentProfile:
+    """Generic advisor profile for a dataset country that has no hand-written profile or simulated state."""
+    place = record.subregion or record.region or "the world"
+    facts = [f"Region: {place}"]
+    if record.capital:
+        facts.append(f"Capital: {', '.join(record.capital)}")
+    facts.append(f"ISO codes: {record.cca2} / {record.cca3}")
+    if record.un_member is not None:
+        facts.append(f"UN member state: {'yes' if record.un_member else 'no'}")
+    return AgentProfile(
+        country_id=record.slug,
+        name=record.name,
+        personality=(
+            f"Represents {record.name} ({place}). Pragmatic and guided by national interest, regional "
+            "security and economic stability. Prefers proportionate, de-escalatory responses."
+        ),
+        goals=(
+            f"Protect {record.name}'s sovereignty, security and domestic stability.",
+            "Preserve economic resilience and useful trade relationships.",
+            "Build diplomatic partnerships that serve regional stability.",
+            "Respond proportionately and avoid unnecessary escalation.",
+        ),
+        background=" | ".join(facts),
+    )
+
+
 def resolve_model_or_none():
     """Configured Gemma model name, or None if the configuration is invalid."""
     try:
@@ -216,32 +242,35 @@ def propose_ai_action(req: AIProposalRequest) -> dict:
     """Generate a validated proposal without executing it."""
 
     world = simulation.world
-    country_id = req.country_id.strip().lower()
 
-    country = next(
-        (item for item in world.countries if item.id == country_id),
-        None,
-    )
+    # Any identifier the client sends ("India", "india", "IND", "afghanistan", "AFG", ...) is resolved
+    # through the country dataset; the simulated world is only needed for the live state briefing.
+    country = find_world_country(world, req.country_id)
+    record = resolve_country(req.country_id)
 
-    if country is None:
+    if country is None and record is None:
         raise HTTPException(
             status_code=404,
             detail=f"Country '{req.country_id}' not found",
         )
 
-    # The selected country determines the identity of the agent.
-    profile = COUNTRY_PROFILES.get(country.id)
+    if country is not None:
+        # The selected country determines the identity of the agent.
+        profile = COUNTRY_PROFILES.get(country.id)
 
-    if profile is None:
-        profile = COUNTRY_PROFILES.get(
-            country.id.replace("_", "-")
-        )
+        if profile is None:
+            profile = COUNTRY_PROFILES.get(
+                country.id.replace("_", "-")
+            )
 
-    if profile is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No AI profile configured for {country.name}",
-        )
+        if profile is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No AI profile configured for {country.name}",
+            )
+    else:
+        # A real country that is not simulated: derive its profile from the dataset record.
+        profile = profile_from_record(record)
     agent = CountryAgent(profile)
 
     outcome = decide_with_fallback(

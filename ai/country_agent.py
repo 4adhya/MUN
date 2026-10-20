@@ -104,6 +104,9 @@ class AgentProfile:
     name: str
     personality: str
     goals: tuple[str, ...]
+    # Facts about a country that has no entry in the simulated world (taken from the country dataset).
+    # Empty for the built-in profiles, whose country must be in the world state.
+    background: str = ""
 
 
 
@@ -262,11 +265,37 @@ def _route_text(route: dict, names: dict[str, str]) -> str:
     )
 
 
+def _briefing_outside_world(w: dict, profile: AgentProfile) -> str:
+    """Briefing for a country that exists in the country dataset but is not simulated.
+
+    No GDP, stability, trade or relationship numbers are made up for it; the other (simulated)
+    countries are listed so the agent can still choose a valid target.
+    """
+    lines = [
+        f"=== {profile.name.upper()}: NOT A SIMULATED PARTICIPANT ===",
+        profile.background,
+        f"The simulation holds no GDP, stability, resource, alliance, sanction, trade or relationship data for "
+        f"{profile.name}. Do not invent any; reason from general knowledge of {profile.name}.",
+        "",
+        "=== SIMULATED COUNTRIES (the only valid targets) ===",
+    ]
+    for other in w["countries"]:
+        lines.append(
+            f"- {other['name']}: GDP {other['gdp']:g}, stability {other['stability']}, "
+            f"alliances: {', '.join(other['alliances']) or 'none'}"
+        )
+    recent = w.get("events", [])[-RECENT_EVENTS_IN_PROMPT:]
+    lines += ["", "=== RECENT DIPLOMACY EVENTS ===", *([f"- turn {e['turn']}: {e['message']}" for e in recent] or ["- none yet"])]
+    return "\n".join(lines)
+
+
 def build_briefing(world: Any, profile: AgentProfile) -> str:
     """A compact, readable summary of the current state from `profile`'s point of view."""
     w = world_to_dict(world)
     me = _country_by_id(w, profile.country_id)
     if me is None:
+        if profile.background:
+            return _briefing_outside_world(w, profile)
         raise ValueError(f"Country '{profile.country_id}' is not in the world state")
     names = {c["id"]: c["name"] for c in w["countries"]}
 
