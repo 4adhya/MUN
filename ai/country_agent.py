@@ -1,4 +1,4 @@
-"""The AURELIA country agent (Phase 2) with strict decision validation (Phase 3).
+"""The country agent (Phase 2) with strict decision validation (Phase 3).
 
     world state (from the backend) + a situation
         -> briefing text + system prompt
@@ -198,13 +198,14 @@ COUNTRY_PROFILES = {
     ),
 }
 
-# Keep the existing name available for code that still imports it.
-AURELIA_PROFILE = COUNTRY_PROFILES["india"]
+# The profile used by the default single-country agent (IndiaAgent).
+INDIA_PROFILE = COUNTRY_PROFILES["india"]
 
 
 
 SYSTEM_PROMPT_TEMPLATE = """\
 You are {name}'s decision-making agent in a geopolitical simulation.
+You only PROPOSE an action. Nothing you write is executed. Your output is a proposal that the backend validates and executes.
 Personality: {personality}
 
 Goals:
@@ -248,7 +249,7 @@ def _country_by_id(world: dict, country_id: str) -> Optional[dict]:
 
 
 def _country_by_name(world: dict, name: str) -> Optional[dict]:
-    """Exact (case-sensitive) match on the display name, e.g. "Caldoria"."""
+    """Exact (case-sensitive) match on the display name, e.g. "Brazil"."""
     return next((c for c in world["countries"] if c["name"] == name), None)
 
 
@@ -412,8 +413,8 @@ class CountryAgent:
         return situation
 
 
-class AureliaAgent(CountryAgent):
-    """The first (and so far only) country agent: Aurelia."""
+class IndiaAgent(CountryAgent):
+    """The first (and so far only) country agent: India."""
 
     def __init__(self, llm: Optional[LLM] = None) -> None:
-        super().__init__(AURELIA_PROFILE, llm)
+        super().__init__(INDIA_PROFILE, llm)

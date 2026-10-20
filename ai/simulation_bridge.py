@@ -17,8 +17,8 @@ Outcomes are reported, never faked: if the backend rejects an action the result 
 backend's own message and HTTP-style status code (404 unknown country, 409 duplicate/conflict, 400 invalid).
 
 AID amount: CountryDecision has no amount field, so every AID uses DEFAULT_AID_AMOUNT. The backend allows
-1..500 and at most 10% of the actor's GDP, so 10 is valid whenever the actor's GDP is at least 100 (Aurelia
-starts at 1800 and stays far above that; the poorest starting country, Istoria, has 310). The backend rules are
+1..500 and at most 10% of the actor's GDP, so 10 is valid whenever the actor's GDP is at least 100 (India
+starts at 3900 and stays far above that; the poorest starting countries, Brazil and Russia, have 2200). The backend rules are
 NOT changed to fit the AI: if a GDP ever falls below 100, the backend rejects the aid and that is reported.
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ from ai.country_agent import CountryDecision, Decision
 
 logger = logging.getLogger("mun.ai")
 
-DEFAULT_AID_AMOUNT = 10.0  # billions of fictional dollars; see the module docstring
+DEFAULT_AID_AMOUNT = 10.0  # billions of illustrative simulation dollars; see the module docstring
 
 
 class UnsupportedDecisionError(ValueError):

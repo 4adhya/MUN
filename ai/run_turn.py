@@ -1,9 +1,9 @@
 """Day 1 demo: one country observes the world, Gemini decides, the backend executes. Run ONCE per command.
 
 Run from the repo root:
-    python ai/run_turn.py                                          # Aurelia, default situation
-    python ai/run_turn.py "Caldoria blocked Aurelia's trade route."
-    python ai/run_turn.py --country aurelia "Garvonia imposed sanctions on us."
+    python ai/run_turn.py                                          # India, default situation
+    python ai/run_turn.py "Brazil blocked India's trade route."
+    python ai/run_turn.py --country india "China imposed sanctions on us."
 
 It runs against a FRESH in-memory simulation (the starting world) inside this process, using the backend's own
 action functions. The running API server's world is not touched, and nothing persists after the script ends.
@@ -26,9 +26,9 @@ AI_DIR = Path(__file__).resolve().parent
 sys.path[:0] = [str(AI_DIR.parent), str(AI_DIR)]
 
 from backend.simulation import Simulation  # noqa: E402
-from country_turn import create_agent, run_country_turn  # noqa: E402
+from ai.country_turn import create_agent, run_country_turn  # noqa: E402
 
-DEFAULT_SITUATION = "Caldoria blocked Aurelia's trade route."
+DEFAULT_SITUATION = "Brazil blocked India's trade route."
 EXIT_OK, EXIT_GEMINI_ERROR, EXIT_INVALID_RESPONSE, EXIT_REJECTED = 0, 1, 2, 3
 LINE = "-" * 50
 
@@ -52,7 +52,7 @@ def _block(title: str, lines: list[str] | str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one AI turn for a country against the simulation.")
     parser.add_argument("situation", nargs="?", default=DEFAULT_SITUATION)
-    parser.add_argument("--country", default='india', help="country id (only aurelia has an agent for now)")
+    parser.add_argument("--country", default='india', help="country id (only india has an agent for now)")
     args = parser.parse_args()
 
     sim = Simulation()  # fresh starting world, in this process only

@@ -7,8 +7,8 @@ import pytest
 
 pytest.importorskip("google.genai")
 
-import gemini_client
-from check_gemini import DEFAULT_MODEL, EXIT_API, EXIT_CONFIG, CheckError
+from ai import gemini_client
+from ai.check_gemini import DEFAULT_MODEL, EXIT_API, EXIT_CONFIG, CheckError
 
 FAKE_KEY = "fake-key-for-tests-123456"
 

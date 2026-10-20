@@ -2,7 +2,7 @@
 
 Every Gemini reply in this file is a MOCK: a canned string handed to the agent through a fake `llm`.
 These tests prove that valid decisions are accepted and that anything else is rejected, never
-repaired. They say nothing about what the real Gemini would decide (see test_aurelia_live.py).
+repaired. They say nothing about what the real Gemini would decide (see test_country_agent_live.py).
 
 Run from ai/:  pytest
 """
@@ -12,11 +12,11 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-import run_aurelia
-from check_gemini import CheckError
-from country_agent import (
-    AURELIA_PROFILE,
-    AureliaAgent,
+from ai import run_agent
+from ai.check_gemini import CheckError
+from ai.country_agent import (
+    INDIA_PROFILE,
+    IndiaAgent,
     CountryDecision,
     Decision,
     ResponseError,
@@ -24,15 +24,15 @@ from country_agent import (
 )
 from backend.simulation import create_initial_world
 
-SITUATION = "Caldoria blocked our trade route."
+SITUATION = "Brazil blocked our trade route."
 
 # The example decision from the Phase 3 brief.
 GOOD = {
-    "country": "Aurelia",
-    "situation": "Caldoria blocked Aurelia's trade route.",
+    "country": "India",
+    "situation": "Brazil blocked India's trade route.",
     "decision": "SANCTION",
-    "target": "Caldoria",
-    "reason": "Caldoria's action threatens Aurelia's trade and economic stability.",
+    "target": "Brazil",
+    "reason": "Brazil's action threatens India's trade and economic stability.",
 }
 
 
@@ -53,7 +53,7 @@ def world():
 
 def propose(text, world):
     """Run the whole agent pipeline with a mocked Gemini that replies `text`."""
-    return AureliaAgent(llm=lambda system_prompt, user_prompt: text).propose(SITUATION, world)
+    return IndiaAgent(llm=lambda system_prompt, user_prompt: text).propose(SITUATION, world)
 
 
 def assert_rejected(result, expected_error=None):
@@ -69,9 +69,9 @@ def assert_rejected(result, expected_error=None):
 @pytest.mark.parametrize(
     "decision, target, target_id",
     [
-        ("SANCTION", "Caldoria", "caldoria"),
-        ("ALLIANCE", "Fyrnia", "fyrnia"),
-        ("AID", "Istoria", "istoria"),
+        ("SANCTION", "Brazil", "brazil"),
+        ("ALLIANCE", "Japan", "japan"),
+        ("AID", "France", "france"),
         ("NO_ACTION", None, None),
     ],
 )
@@ -82,7 +82,7 @@ def test_valid_decisions_are_accepted(world, decision, target, target_id):
     assert isinstance(d, CountryDecision)
     assert d.decision is Decision(decision)
     assert d.target == target and d.target_id == target_id
-    assert d.country == "Aurelia" and d.situation and d.reason
+    assert d.country == "India" and d.situation and d.reason
 
 
 def test_the_brief_example_round_trips_exactly(world):
@@ -114,25 +114,25 @@ REJECTED = {
     "alliance target null": (raw(decision="ALLIANCE", target=None), "ALLIANCE requires a target"),
     "aid target missing": (raw(decision="AID", target=...), "target: Field required"),
     "aid target null": (raw(decision="AID", target=None), "AID requires a target"),
-    # 7. target = Aurelia
-    "sanction self": (raw(target="Aurelia"), "own country"),
-    "alliance self": (raw(decision="ALLIANCE", target="Aurelia"), "own country"),
-    "aid self": (raw(decision="AID", target="Aurelia"), "own country"),
+    # 7. target = India
+    "sanction self": (raw(target="India"), "own country"),
+    "alliance self": (raw(decision="ALLIANCE", target="India"), "own country"),
+    "aid self": (raw(decision="AID", target="India"), "own country"),
     # 8. target not in the world state
     "sanction unknown": (raw(target="Atlantis"), "Unknown target country 'Atlantis'"),
     "alliance unknown": (raw(decision="ALLIANCE", target="Atlantis"), "Unknown target country"),
     "aid unknown": (raw(decision="AID", target="Atlantis"), "Unknown target country"),
     "target number": (raw(target=7), "target"),
-    "target list": (raw(target=["Caldoria"]), "target"),
+    "target list": (raw(target=["Brazil"]), "target"),
     # 9. NO_ACTION with a non-null target
-    "no_action target country": (raw(decision="NO_ACTION", target="Caldoria"), "must not have a target"),
-    "no_action target aurelia": (raw(decision="NO_ACTION", target="Aurelia"), "must not have a target"),
+    "no_action target country": (raw(decision="NO_ACTION", target="Brazil"), "must not have a target"),
+    "no_action target india": (raw(decision="NO_ACTION", target="India"), "must not have a target"),
     "no_action target empty string": (raw(decision="NO_ACTION", target=""), "must not have a target"),
     "no_action target 'none'": (raw(decision="NO_ACTION", target="none"), "must not have a target"),
     "no_action target 'null'": (raw(decision="NO_ACTION", target="null"), "must not have a target"),
     "no_action target missing": (raw(decision="NO_ACTION", target=...), "target: Field required"),
     # 1-3, 6. country / situation / reason
-    "country wrong": (raw(country="Caldoria"), "expected 'Aurelia'"),
+    "country wrong": (raw(country="Brazil"), "expected 'India'"),
     "country missing": (raw(country=...), "country: Field required"),
     "country null": (raw(country=None), "country"),
     "situation missing": (raw(situation=...), "situation: Field required"),
@@ -148,8 +148,8 @@ REJECTED = {
     "reason too long": (raw(reason="x" * 1001), "reason"),
     # 8. extra / unexpected fields
     "extra field": (raw(confidence=0.9), "confidence: Extra inputs are not permitted"),
-    "extra target_id": (raw(target_id="caldoria"), "target_id: Extra inputs are not permitted"),
-    "extra amount": (raw(decision="AID", target="Istoria", amount=50), "amount: Extra inputs are not permitted"),
+    "extra target_id": (raw(target_id="brazil"), "target_id: Extra inputs are not permitted"),
+    "extra amount": (raw(decision="AID", target="France", amount=50), "amount: Extra inputs are not permitted"),
 }
 
 
@@ -165,12 +165,12 @@ NOT_REPAIRED = {
     "padded decision": raw(decision=" SANCTION "),
     "decision with space": raw(decision="NO ACTION", target=None),
     "decision with hyphen": raw(decision="NO-ACTION", target=None),
-    "target as id": raw(target="caldoria"),
-    "target upper-case": raw(target="CALDORIA"),
-    "target padded": raw(target=" Caldoria "),
-    "country as id": raw(country="aurelia"),
-    "country lower-case": raw(country="AURELIA"),
-    "country padded": raw(country="Aurelia "),
+    "target as id": raw(target="brazil"),
+    "target upper-case": raw(target="BRAZIL"),
+    "target padded": raw(target=" Brazil "),
+    "country as id": raw(country="india"),
+    "country lower-case": raw(country="INDIA"),
+    "country padded": raw(country="India "),
     "code fence": "```json\n" + raw() + "\n```",
     "prose before json": "Sure! Here you go: " + raw(),
     "prose after json": raw() + "\nHope that helps!",
@@ -186,10 +186,10 @@ def test_near_misses_are_rejected_not_repaired(world, text):
 MALFORMED = {
     "empty": ("", "empty response"),
     "whitespace": ("  \n\t ", "empty response"),
-    "plain prose": ("I think Aurelia should sanction Caldoria.", "not valid JSON"),
-    "truncated": ('{"country": "Aurelia", "decision": "SANC', "not valid JSON"),
+    "plain prose": ("I think India should sanction Brazil.", "not valid JSON"),
+    "truncated": ('{"country": "India", "decision": "SANC', "not valid JSON"),
     "trailing comma": (raw()[:-1] + ",}", "not valid JSON"),
-    "single quotes": ("{'country': 'Aurelia'}", "not valid JSON"),
+    "single quotes": ("{'country': 'India'}", "not valid JSON"),
     "json array": ("[]", "must be an object"),
     "json array of decisions": ("[" + raw() + "]", "must be an object"),
     "json string": ('"SANCTION"', "must be an object"),
@@ -219,7 +219,7 @@ def test_validation_errors_and_gemini_errors_have_different_codes(world):
     def gemini_503(system_prompt, user_prompt):
         raise CheckError("Gemini service error (HTTP 503); this is on Google's side, retry shortly.", 3)
 
-    down = AureliaAgent(llm=gemini_503).propose(SITUATION, world)
+    down = IndiaAgent(llm=gemini_503).propose(SITUATION, world)
     assert down.ok is False and down.error_code == "gemini_error" and down.raw_response is None
     assert "503" in down.error
     assert invalid.error_code != down.error_code
@@ -249,20 +249,20 @@ def test_model_rejects_invalid_data(overrides):
 
 
 def test_parse_decision_works_on_world_json_and_derives_target_id(world):
-    decision = parse_decision(raw(), world.model_dump(mode="json"), AURELIA_PROFILE)
-    assert decision.target == "Caldoria" and decision.target_id == "caldoria"
+    decision = parse_decision(raw(), world.model_dump(mode="json"), INDIA_PROFILE)
+    assert decision.target == "Brazil" and decision.target_id == "brazil"
 
 
 def test_parse_decision_raises_response_error_for_bad_input(world):
     with pytest.raises(ResponseError, match="Unknown target country"):
-        parse_decision(raw(target="Atlantis"), world, AURELIA_PROFILE)
+        parse_decision(raw(target="Atlantis"), world, INDIA_PROFILE)
 
 
 def test_target_must_exist_in_the_world_that_was_passed_in(world):
     data = world.model_dump(mode="json")
-    data["countries"] = [c for c in data["countries"] if c["id"] != "caldoria"]  # Caldoria is not in THIS world
-    with pytest.raises(ResponseError, match="Unknown target country 'Caldoria'"):
-        parse_decision(raw(), data, AURELIA_PROFILE)
+    data["countries"] = [c for c in data["countries"] if c["id"] != "brazil"]  # Brazil is not in THIS world
+    with pytest.raises(ResponseError, match="Unknown target country 'Brazil'"):
+        parse_decision(raw(), data, INDIA_PROFILE)
 
 
 # --- proposal only: nothing is executed -------------------------------------------------------------------------------
@@ -272,7 +272,7 @@ def test_validated_decision_does_not_touch_the_world(world):
     assert world.model_dump(mode="json") == before
 
 
-# --- CLI: python ai/run_aurelia.py ---------------------------------------------------------------------------------------
+# --- CLI: python ai/run_agent.py ---------------------------------------------------------------------------------------
 def run_cli(monkeypatch, capsys, reply, *args):
     def make_agent():
         def llm(system_prompt, user_prompt):
@@ -280,17 +280,17 @@ def run_cli(monkeypatch, capsys, reply, *args):
                 raise reply
             return reply
 
-        return AureliaAgent(llm=llm)
+        return IndiaAgent(llm=llm)
 
-    monkeypatch.setattr(run_aurelia, "AureliaAgent", make_agent)
-    monkeypatch.setattr(sys, "argv", ["run_aurelia.py", *args])
-    code = run_aurelia.main()
+    monkeypatch.setattr(run_agent, "IndiaAgent", make_agent)
+    monkeypatch.setattr(sys, "argv", ["run_agent.py", *args])
+    code = run_agent.main()
     return code, capsys.readouterr().out
 
 
 def test_cli_prints_the_validated_decision(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, json.dumps(GOOD), SITUATION)
-    assert code == run_aurelia.EXIT_OK
+    assert code == run_agent.EXIT_OK
     assert "nothing was executed" in out
     assert json.loads(out[out.index("{"):]) == GOOD
 
@@ -299,14 +299,14 @@ def test_cli_show_prompt_still_works(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, json.dumps(GOOD), "--show-prompt", SITUATION)
     assert code == 0
     assert "--- SYSTEM PROMPT ---" in out and "--- USER PROMPT ---" in out and SITUATION in out
-    assert "=== CURRENT STATE OF AURELIA ===" in out
+    assert "=== CURRENT STATE OF INDIA ===" in out
 
 
 def test_cli_exit_codes_distinguish_the_failure_kind(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, "not json at all", SITUATION)
-    assert code == run_aurelia.EXIT_INVALID_RESPONSE == 2
+    assert code == run_agent.EXIT_INVALID_RESPONSE == 2
     assert "INVALID RESPONSE" in out and "not valid JSON" in out and "not json at all" in out
 
     code, out = run_cli(monkeypatch, capsys, CheckError("Gemini service error (HTTP 503)", 3), SITUATION)
-    assert code == run_aurelia.EXIT_GEMINI_ERROR == 1
+    assert code == run_agent.EXIT_GEMINI_ERROR == 1
     assert "GEMINI ERROR" in out and "503" in out

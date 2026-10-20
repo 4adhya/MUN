@@ -1,6 +1,6 @@
 """Phase 5: one complete AI turn for one country, executed ONCE per call.
 
-    run_country_turn("aurelia", "Caldoria blocked our trade route.")
+    run_country_turn("india", "Brazil blocked our trade route.")
 
         simulation world  ->  situation + briefing  ->  Gemini  ->  validated CountryDecision
         (Gemini failed or invalid -> Phase 4 fallback NO_ACTION)
@@ -9,7 +9,7 @@
 
 No loops, no turn advancement, no scheduling: calling it again is a new, separate turn (the backend's
 duplicate protections still apply). It is country-agnostic: add another agent to AGENT_FACTORIES later and
-call run_country_turn("caldoria") the same way. Only Aurelia is configured for now.
+call run_country_turn("china") the same way. Only India is configured for now.
 """
 from __future__ import annotations
 
@@ -19,14 +19,13 @@ from pydantic import BaseModel
 
 from backend.simulation import Simulation
 from backend.simulation import simulation as shared_simulation
-from ai.country_agent import LLM, AureliaAgent, CountryAgent, CountryDecision
-from fallback import decide_with_fallback
-from simulation_bridge import BridgeResult, execute_decision
+from ai.country_agent import LLM, CountryAgent, CountryDecision, IndiaAgent
+from ai.fallback import decide_with_fallback
+from ai.simulation_bridge import BridgeResult, execute_decision
 
-# country id -> factory(llm) building that country's agent. Aurelia is the only one so far.
+# country id -> factory(llm) building that country's agent. India is the only one so far.
 AGENT_FACTORIES: dict[str, Callable[[Optional[LLM]], CountryAgent]] = {
-    "aurelia": lambda llm=None: AureliaAgent(llm=llm),
-    "india": lambda llm=None: AureliaAgent(llm=llm),
+    "india": lambda llm=None: IndiaAgent(llm=llm),
 }
 
 NO_INCIDENT_SITUATION = "No new incident. Review the current state and decide whether any action is needed."

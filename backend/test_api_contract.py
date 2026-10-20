@@ -7,6 +7,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from backend import main as backend_main
 from backend.main import DEFAULT_CORS_ORIGINS, app, cors_origins
 from backend.simulation import simulation
 
@@ -301,18 +302,43 @@ def test_frontend_workflow():
     assert client.get("/events").json() == []
 
 
-# 13. AI agent workflow: same endpoints, no AI-specific API -------------------------------------------------
-def test_ai_agent_can_observe_decide_and_act_with_existing_endpoints():
+# 13. AI agent workflow: observe -> propose (POST /ai/propose) -> act through the existing action endpoints -------
+def test_ai_agent_can_observe_decide_and_act_with_existing_endpoints(monkeypatch):
     w = client.get("/world").json()                                       # observe
     weakest = min(w["countries"], key=lambda c: c["stability"])
     richest = max(w["countries"], key=lambda c: c["gdp"])
     detail = client.get(f"/countries/{weakest['id']}").json()             # inspect
     assert detail["stability"] == weakest["stability"]
+
+    # POST /ai/propose is the one intentional AI endpoint. Gemini is replaced by a canned reply so the test
+    # needs no API key and no network; the real agent, validation and fallback code still run.
+    canned = json.dumps({
+        "country": richest["name"],
+        "situation": f"{weakest['name']} is the least stable country.",
+        "decision": "AID",
+        "target": weakest["name"],
+        "reason": f"Aid helps stabilise {weakest['name']}.",
+    })
+    real_agent = backend_main.CountryAgent
+    monkeypatch.setattr(backend_main, "CountryAgent", lambda profile: real_agent(profile, llm=lambda system, user: canned))
+
+    r = post("/ai/propose", {"country_id": richest["id"], "situation": f"{weakest['name']} is the least stable country."})
+    assert r.status_code == 200                                           # decide: a validated proposal
+    proposal = r.json()
+    assert proposal["source"] == "ai" and proposal["used_fallback"] is False
+    assert proposal["error_code"] is None and proposal["error"] is None
+    assert proposal["decision"]["decision"] == "AID" and proposal["decision"]["country"] == richest["name"]
+    assert proposal["decision"]["target"] == weakest["name"]
+    assert client.get("/events").json() == []                             # a proposal never changes the world
+
     r = post("/actions/aid", {"actor": richest["id"], "target": weakest["id"], "amount": 10})  # act
     assert r.status_code == 200
     history = client.get("/events").json()                                # remember
     assert history[0]["actor"] == richest["id"] and history[0]["target"] == weakest["id"]
-    assert not any("agent" in p or "ai" in p.split("/") for p in app.openapi()["paths"])
+
+    # Execution still goes through /actions/*: /ai/propose is the only AI-specific path, and there is no agent API.
+    ai_paths = sorted(p for p in app.openapi()["paths"] if "agent" in p or "ai" in p.split("/"))
+    assert ai_paths == ["/ai/propose"]
 
 
 if __name__ == "__main__":

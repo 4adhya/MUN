@@ -9,14 +9,14 @@ import sys
 
 import pytest
 
-import run_turn
+from ai import run_turn
 from backend.simulation import Simulation
-from check_gemini import CheckError
-from country_agent import AureliaAgent
-from country_turn import AGENT_FACTORIES, NO_INCIDENT_SITUATION, create_agent, default_situation, run_country_turn
-from fallback import FALLBACK_REASON
+from ai.check_gemini import CheckError
+from ai.country_agent import IndiaAgent
+from ai.country_turn import AGENT_FACTORIES, NO_INCIDENT_SITUATION, create_agent, default_situation, run_country_turn
+from ai.fallback import FALLBACK_REASON
 
-SITUATION = "Caldoria blocked Aurelia's trade."
+SITUATION = "Brazil blocked India's trade."
 
 
 class FakeLLM:
@@ -31,13 +31,13 @@ class FakeLLM:
         return self.reply
 
 
-def reply(decision="SANCTION", target="Caldoria", **overrides):
+def reply(decision="SANCTION", target="Brazil", **overrides):
     body = {
-        "country": "Aurelia",
-        "situation": "Caldoria blocked our trade route.",
+        "country": "India",
+        "situation": "Brazil blocked our trade route.",
         "decision": decision,
         "target": target,
-        "reason": "Protects Aurelia's trade interests.",
+        "reason": "Protects India's trade interests.",
         **overrides,
     }
     return json.dumps(body)
@@ -50,37 +50,44 @@ def sim():
 
 def turn(sim, llm_reply, situation=SITUATION):
     llm = FakeLLM(llm_reply)
-    return run_country_turn("aurelia", situation, simulation=sim, llm=llm), llm
+    return run_country_turn("india", situation, simulation=sim, llm=llm), llm
 
 
 def dump(sim):
     return sim.world.model_dump(mode="json")
 
 
+def allied_simulation():
+    """A starting world in which India and France are already allied (the starting dataset has no alliances)."""
+    sim = Simulation()
+    sim.alliance("india", "france")
+    return sim
+
+
 # --- successful AI decisions reach the backend --------------------------------------------------------------------
 def test_ai_sanction_is_executed_through_the_backend(sim):
-    result, llm = turn(sim, reply("SANCTION", "Caldoria"))
+    result, llm = turn(sim, reply("SANCTION", "Brazil"))
     assert (result.source, result.used_fallback) == ("ai", False)
     assert result.fallback_error_code is None and result.fallback_error is None
-    assert result.decision.decision.value == "SANCTION" and result.decision.target == "Caldoria"
+    assert result.decision.decision.value == "SANCTION" and result.decision.target == "Brazil"
     assert result.ok and result.world_changed and result.action.status == "executed"
-    assert "aurelia" in sim.get_country("caldoria").sanctions
+    assert "india" in sim.get_country("brazil").sanctions
     assert len(sim.world.events) == 1 and result.action.event["type"] == "sanction"
     assert len(llm.calls) == 1  # Gemini asked exactly once
 
 
 def test_ai_alliance_is_executed(sim):
-    result, _ = turn(sim, reply("ALLIANCE", "Garvonia"))
+    result, _ = turn(sim, reply("ALLIANCE", "China"))
     assert result.action.status == "executed" and result.action.action == "ALLIANCE"
-    assert "Aurelia-Garvonia Alliance" in sim.get_country("garvonia").alliances
+    assert "China-India Alliance" in sim.get_country("china").alliances
     assert sim.world.events[0].type == "alliance"
 
 
 def test_ai_aid_is_executed_with_the_default_amount(sim):
-    before = sim.get_country("istoria").gdp
-    result, _ = turn(sim, reply("AID", "Istoria"))
+    before = sim.get_country("france").gdp
+    result, _ = turn(sim, reply("AID", "France"))
     assert result.action.status == "executed" and result.action.amount == 10.0
-    assert sim.get_country("istoria").gdp == pytest.approx(before + 4.0)
+    assert sim.get_country("france").gdp == pytest.approx(before + 4.0)
     assert result.action.event["effects"]["amount"] == 10.0
 
 
@@ -101,7 +108,7 @@ def test_ai_no_action_does_not_mutate_the_world(sim):
         (RuntimeError("socket exploded"), "gemini_error"),
         ("", "invalid_response"),
         ("not json", "invalid_response"),
-        (reply("ATTACK", "Caldoria"), "invalid_response"),
+        (reply("ATTACK", "Brazil"), "invalid_response"),
         (reply("SANCTION", "Atlantis"), "invalid_response"),
         (reply("SANCTION", None), "invalid_response"),
     ],
@@ -114,7 +121,7 @@ def test_gemini_failure_or_invalid_reply_uses_the_fallback_and_changes_nothing(s
     assert result.source == "fallback" and result.used_fallback
     assert result.fallback_error_code == code and result.fallback_error
     assert result.decision.decision.value == "NO_ACTION" and result.decision.target is None
-    assert result.decision.reason == FALLBACK_REASON.format(country="Aurelia")
+    assert result.decision.reason == FALLBACK_REASON.format(country="India")
     assert result.action.status == "no_action" and result.ok and not result.world_changed
     assert dump(sim) == before and sim.world.events == []
 
@@ -126,21 +133,22 @@ def test_invalid_reply_is_kept_for_debugging_but_gemini_errors_have_none(sim):
 
 
 # --- backend rejection ---------------------------------------------------------------------------------------------------
-def test_valid_ai_decision_rejected_by_the_backend_is_not_reported_as_success(sim):
+def test_valid_ai_decision_rejected_by_the_backend_is_not_reported_as_success():
+    sim = allied_simulation()
     before = dump(sim)
-    result, _ = turn(sim, reply("ALLIANCE", "Brevania"))  # valid decision, but already allied
+    result, _ = turn(sim, reply("ALLIANCE", "France"))  # valid decision, but already allied
 
     assert result.source == "ai" and not result.used_fallback  # the AI was fine
     assert result.action.status == "rejected" and result.action.http_status == 409
     assert not result.ok and not result.world_changed
     assert result.action.event is None
-    assert dump(sim) == before and sim.world.events == []
+    assert dump(sim) == before and len(sim.world.events) == 1  # only the setup alliance event
 
 
 def test_repeating_a_turn_keeps_the_duplicate_protection(sim):
-    first, _ = turn(sim, reply("SANCTION", "Caldoria"))
+    first, _ = turn(sim, reply("SANCTION", "Brazil"))
     after_first = dump(sim)
-    second, _ = turn(sim, reply("SANCTION", "Caldoria"))
+    second, _ = turn(sim, reply("SANCTION", "Brazil"))
 
     assert first.action.status == "executed"
     assert second.action.status == "rejected" and second.action.http_status == 409
@@ -149,57 +157,57 @@ def test_repeating_a_turn_keeps_the_duplicate_protection(sim):
 
 # --- real world state reaches the agent ---------------------------------------------------------------------------------------
 def test_the_agent_prompt_is_built_from_the_current_simulation_state(sim):
-    sim.sanction("caldoria", "aurelia")  # change the real world first
+    sim.sanction("brazil", "india")  # change the real world first
     result, llm = turn(sim, reply("NO_ACTION", None), situation="Review please.")
     prompt = llm.calls[0][1]
-    assert "Sanctioned by: Caldoria" in prompt  # current sanctions
-    assert f"GDP: {sim.get_country('aurelia').gdp:g}" in prompt and "Stability:" in prompt
+    assert "Sanctioned by: Brazil" in prompt  # current sanctions
+    assert f"GDP: {sim.get_country('india').gdp:g}" in prompt and "Stability:" in prompt
     assert "CUT OFF" in prompt  # the trade route the sanction cut
-    assert "Caldoria imposed sanctions on Aurelia" in prompt  # recent events
+    assert "Brazil imposed sanctions on India" in prompt  # recent events
     assert "Review please." in prompt and result.situation == "Review please."
 
 
 def test_default_situation_comes_from_the_latest_event_aimed_at_the_country(sim):
-    assert default_situation(sim.world, "aurelia") == NO_INCIDENT_SITUATION
-    sim.sanction("caldoria", "aurelia")
-    sim.sanction("aurelia", "garvonia")  # aimed at someone else: ignored
-    text = default_situation(sim.world, "aurelia")
-    assert "Caldoria imposed sanctions on Aurelia" in text
+    assert default_situation(sim.world, "india") == NO_INCIDENT_SITUATION
+    sim.sanction("brazil", "india")
+    sim.sanction("india", "china")  # aimed at someone else: ignored
+    text = default_situation(sim.world, "india")
+    assert "Brazil imposed sanctions on India" in text
 
-    result = run_country_turn("aurelia", simulation=sim, llm=FakeLLM(reply("NO_ACTION", None)))
+    result = run_country_turn("india", simulation=sim, llm=FakeLLM(reply("NO_ACTION", None)))
     assert result.situation == text
 
 
 # --- one call = one turn; country-agnostic plumbing ----------------------------------------------------------------------------
 def test_one_call_asks_gemini_once_and_never_loops(sim):
-    llm = FakeLLM(reply("SANCTION", "Caldoria"))
-    run_country_turn("aurelia", SITUATION, simulation=sim, llm=llm)
+    llm = FakeLLM(reply("SANCTION", "Brazil"))
+    run_country_turn("india", SITUATION, simulation=sim, llm=llm)
     assert len(llm.calls) == 1 and sim.world.turn == 0 and len(sim.world.events) == 1
 
 
 def test_country_id_is_a_parameter_and_is_validated(sim):
-    assert isinstance(create_agent("aurelia"), AureliaAgent) and set(AGENT_FACTORIES) == {"aurelia"}
+    assert isinstance(create_agent("india"), IndiaAgent) and set(AGENT_FACTORIES) == {"india"}
     with pytest.raises(ValueError, match="No agent is configured"):
-        run_country_turn("caldoria", SITUATION, simulation=sim, llm=FakeLLM(""))  # exists, but no agent yet
+        run_country_turn("brazil", SITUATION, simulation=sim, llm=FakeLLM(""))  # exists, but no agent yet
     with pytest.raises(ValueError, match="Unknown country"):
         run_country_turn("atlantis", SITUATION, simulation=sim, llm=FakeLLM(""))
-    assert run_country_turn("  AURELIA ", SITUATION, simulation=sim, llm=FakeLLM(reply("NO_ACTION", None))).ok
+    assert run_country_turn("  INDIA ", SITUATION, simulation=sim, llm=FakeLLM(reply("NO_ACTION", None))).ok
 
 
 def test_agent_for_the_wrong_country_is_refused(sim):
-    with pytest.raises(ValueError, match="not 'caldoria'"):
-        run_country_turn("caldoria", SITUATION, simulation=sim, agent=AureliaAgent(llm=FakeLLM("")))
+    with pytest.raises(ValueError, match="not 'brazil'"):
+        run_country_turn("brazil", SITUATION, simulation=sim, agent=IndiaAgent(llm=FakeLLM("")))
 
 
 def test_bad_situation_is_a_caller_error_not_a_fallback(sim):
     with pytest.raises(ValueError):
-        run_country_turn("aurelia", "   ", simulation=sim, llm=FakeLLM(reply()))
+        run_country_turn("india", "   ", simulation=sim, llm=FakeLLM(reply()))
     assert sim.world.events == []
 
 
 def test_default_agent_is_only_built_without_needing_a_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    create_agent("aurelia")  # building the agent must not need a key
+    create_agent("india")  # building the agent must not need a key
 
 
 # --- the shared backend instance is the default -----------------------------------------------------------------------------------
@@ -208,7 +216,7 @@ def test_default_simulation_is_the_shared_backend_instance():
 
     shared.reset()
     try:
-        result = run_country_turn("aurelia", SITUATION, llm=FakeLLM(reply("SANCTION", "Caldoria")))
+        result = run_country_turn("india", SITUATION, llm=FakeLLM(reply("SANCTION", "Brazil")))
         assert result.action.status == "executed" and len(shared.world.events) == 1
     finally:
         shared.reset()
@@ -216,16 +224,16 @@ def test_default_simulation_is_the_shared_backend_instance():
 
 # --- CLI ----------------------------------------------------------------------------------------------------------------------------
 def run_cli(monkeypatch, capsys, llm_reply, *args):
-    monkeypatch.setattr(run_turn, "create_agent", lambda country_id: AureliaAgent(llm=FakeLLM(llm_reply)))
+    monkeypatch.setattr(run_turn, "create_agent", lambda country_id: IndiaAgent(llm=FakeLLM(llm_reply)))
     monkeypatch.setattr(sys, "argv", ["run_turn.py", *args])
     code = run_turn.main()
     return code, capsys.readouterr().out
 
 
 def test_cli_shows_a_successful_flow(monkeypatch, capsys):
-    code, out = run_cli(monkeypatch, capsys, reply("SANCTION", "Caldoria"), SITUATION)
+    code, out = run_cli(monkeypatch, capsys, reply("SANCTION", "Brazil"), SITUATION)
     assert code == run_turn.EXIT_OK
-    assert "AI DECISION" in out and "decision: SANCTION -> Caldoria" in out
+    assert "AI DECISION" in out and "decision: SANCTION -> Brazil" in out
     assert "SANCTION ACCEPTED by the backend" in out and "world state updated" in out
     assert "Events recorded this run: 1" in out and "FALLBACK" not in out
 
@@ -241,7 +249,8 @@ def test_cli_invalid_reply_and_rejection_exit_codes(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, "not json", SITUATION)
     assert code == run_turn.EXIT_INVALID_RESPONSE and "FALLBACK DECISION" in out and "not json" in out
 
-    code, out = run_cli(monkeypatch, capsys, reply("ALLIANCE", "Brevania"), SITUATION)
+    monkeypatch.setattr(run_turn, "Simulation", allied_simulation)  # India and France are already allied
+    code, out = run_cli(monkeypatch, capsys, reply("ALLIANCE", "France"), SITUATION)
     assert code == run_turn.EXIT_REJECTED
     assert "REJECTED by the backend (HTTP 409)" in out and "did NOT happen" in out and "ACCEPTED" not in out
 
