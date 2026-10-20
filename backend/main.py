@@ -24,7 +24,7 @@ AI_DIR = Path(__file__).resolve().parent.parent / "ai"
 if str(AI_DIR) not in sys.path:
     sys.path.insert(0, str(AI_DIR))
 
-from ai.country_agent import AgentProfile, CountryAgent
+from ai.country_agent import COUNTRY_PROFILES, CountryAgent
 from ai.fallback import decide_with_fallback
 
 from .models import (
@@ -221,23 +221,18 @@ def propose_ai_action(req: AIProposalRequest) -> dict:
         )
 
     # The selected country determines the identity of the agent.
-    profile = AgentProfile(
-        country_id=country.id,
-        name=country.name,
-        personality=(
-            "Pragmatic and strategic. Protect national interests while "
-            "considering economic stability, trade, diplomatic relationships "
-            "and the risks of escalation."
-        ),
-        goals=(
-            f"Protect {country.name}'s economic stability.",
-            "Maintain beneficial trade relationships.",
-            "Improve diplomatic relationships when strategically useful.",
-            "Respond proportionately to threats and hostile actions.",
-            "Avoid unnecessary escalation and economic damage.",
-        ),
-    )
+    profile = COUNTRY_PROFILES.get(country.id)
 
+    if profile is None:
+        profile = COUNTRY_PROFILES.get(
+            country.id.replace("_", "-")
+        )
+
+    if profile is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No AI profile configured for {country.name}",
+        )
     agent = CountryAgent(profile)
 
     outcome = decide_with_fallback(
