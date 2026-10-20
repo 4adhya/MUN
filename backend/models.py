@@ -10,7 +10,7 @@ from .mun.metrics import MUNWorldMetrics
 
 
 class Country(BaseModel):
-    id: str = Field(description="Stable lowercase slug, e.g. 'aurelia'")
+    id: str = Field(description="Stable lowercase slug, e.g. 'india' or 'united-states'")
     name: str
     country_code: Optional[str] = Field(
         default=None,
@@ -18,7 +18,7 @@ class Country(BaseModel):
         description="ISO 3166-1 alpha-2 code (e.g. 'IN'); links a MUN delegate to this country. Optional for compatibility.",
     )
     flag: Optional[str] = Field(default=None, description="Flag emoji, if known")
-    gdp: float = Field(ge=0, description="Gross domestic product in billions of fictional dollars")
+    gdp: float = Field(ge=0, description="Gross domestic product in billions of illustrative simulation dollars")
     stability: int = Field(ge=0, le=100, description="Internal stability, 0 (collapse) to 100 (rock solid)")
     resources: dict[str, int] = Field(
         default_factory=dict,
@@ -90,7 +90,7 @@ class AllianceRequest(_CountryPairRequest):
 
 
 class AidRequest(_CountryPairRequest):
-    amount: float = Field(allow_inf_nan=False, description="Aid amount in billions of fictional dollars")
+    amount: float = Field(allow_inf_nan=False, description="Aid amount in billions of illustrative simulation dollars")
 
     @field_validator("amount", mode="before")
     @classmethod
