@@ -73,7 +73,7 @@ export const getEvents = (limit = 100) =>
   request(`/events?limit=${limit}`);
 
 
-export const proposeAI = (countryId, situation, { timeoutMs = 20000 } = {}) =>
+export const proposeAI = (countryId, situation, { timeoutMs = 60000 } = {}) =>
   request("/ai/propose", {
     method: "POST",
     body: {

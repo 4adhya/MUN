@@ -23,6 +23,8 @@ from ai.check_gemini import (
     load_env_file,
 )
 
+GEMMA_PREFIX = "gemma-"  # the hackathon requires a Gemma model; anything else is refused, never silently used
+
 TEMPERATURE = 0.5  # low: we want consistent, sensible decisions rather than creative ones
 JSON_MIME_TYPE = "application/json"
 
@@ -43,16 +45,33 @@ def _build_config(system_instruction: str):
         system_instruction=system_instruction,
         response_mime_type="application/json",
         temperature=0.5,
-        max_output_tokens=400,
+        max_output_tokens=2048,  # was 400: Gemma hit MAX_TOKENS before finishing the JSON,
     )
 
 
 
 
-def generate_json_text(system_instruction: str, prompt: str) -> str:
-    """One Gemini call. Returns the raw reply text (parsing/validation happens in the agent)."""
+def resolve_model() -> str:
+    """The model every agent call uses: GEMINI_MODEL if set, else DEFAULT_MODEL (a Gemma model).
+
+    Refuses anything that is not a Gemma model (e.g. a leftover Gemini Flash value in .env), so the
+    demo can never quietly run on another model. Raises CheckError (exit code EXIT_CONFIG).
+    """
     load_env_file(REPO_ROOT / ".env")  # real environment variables still win
     model = os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
+    if not model.lower().startswith(GEMMA_PREFIX):
+        raise CheckError(
+            f"GEMINI_MODEL is '{model}', which is not a Gemma model. This project must use Gemma through the "
+            f"Gemini API (default: {DEFAULT_MODEL}). Remove GEMINI_MODEL from your environment/.env or set it "
+            f"to a gemma-* model.",
+            EXIT_CONFIG,
+        )
+    return model
+
+
+def generate_json_text(system_instruction: str, prompt: str) -> str:
+    """One Gemma call through the Gemini API. Returns the raw reply text (parsing/validation is in the agent)."""
+    model = resolve_model()
     key = get_api_key()  # raises CheckError if missing or still the placeholder
 
     try:

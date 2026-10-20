@@ -310,7 +310,7 @@ const approveAIProposal = async () => {
   try {
     const actor = toCountryId(country.name);
 
-    // Gemini returns the canonical country name, not its ID.
+    // Gemma returns the canonical country name, not its ID.
     // Convert it to the backend's lowercase country ID.
     const target = toCountryId(decision.target);
 
@@ -501,7 +501,7 @@ const approveAIProposal = async () => {
   <div className="ai-proposal-heading">
     <div>
       <span className="conference-section-label">
-        LIVE GEMINI AGENT
+        LIVE GEMMA AGENT (via Gemini API)
       </span>
 
       <h2>AI diplomatic advisor</h2>
@@ -543,7 +543,7 @@ const approveAIProposal = async () => {
         <span>
           {aiProposal.used_fallback
             ? "SAFE FALLBACK"
-            : "GEMINI GENERATED"}
+            : `GEMMA GENERATED · ${aiProposal.model || "unknown model"}`}
         </span>
 
         <strong>
@@ -567,7 +567,7 @@ const approveAIProposal = async () => {
 
       {aiProposal.used_fallback && (
         <p className="ai-error">
-          This is a fallback response, not a Gemini-generated
+          This is a fallback response, not a Gemma-generated
           recommendation.
           {aiProposal.error ? ` ${aiProposal.error}` : ""}
         </p>

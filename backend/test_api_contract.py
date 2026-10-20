@@ -341,5 +341,28 @@ def test_ai_agent_can_observe_decide_and_act_with_existing_endpoints(monkeypatch
     assert ai_paths == ["/ai/propose"]
 
 
+# 14. /ai/propose names the Gemma model for AI decisions, and never for a fallback ---------------------------
+def test_ai_proposal_reports_gemma_model_and_fallback_reports_none(monkeypatch):
+    real_agent = backend_main.CountryAgent
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    monkeypatch.setattr(backend_main, "resolve_model", lambda: "gemma-4-26b-a4b-it")
+
+    def boom(system, user):
+        raise RuntimeError("simulated Gemma outage")
+
+    monkeypatch.setattr(backend_main, "CountryAgent", lambda profile: real_agent(profile, llm=boom))
+    body = {"country_id": "india", "situation": "Test incident."}
+    fallback = post("/ai/propose", body).json()
+    assert fallback["used_fallback"] is True and fallback["source"] == "fallback"
+    assert fallback["model"] is None                                      # a fallback is never attributed to Gemma
+    assert fallback["decision"]["decision"] == "NO_ACTION"
+    assert client.get("/events").json() == []                             # and it changed nothing
+
+    canned = json.dumps({"country": "India", "situation": "s", "decision": "NO_ACTION", "target": None, "reason": "r"})
+    monkeypatch.setattr(backend_main, "CountryAgent", lambda profile: real_agent(profile, llm=lambda s, u: canned))
+    ok = post("/ai/propose", body).json()
+    assert ok["source"] == "ai" and ok["model"] == "gemma-4-26b-a4b-it"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

@@ -26,6 +26,7 @@ if str(AI_DIR) not in sys.path:
 
 from ai.country_agent import COUNTRY_PROFILES, CountryAgent
 from ai.fallback import decide_with_fallback
+from ai.gemini_client import resolve_model
 
 from .models import (
     ActionResponse,
@@ -198,6 +199,14 @@ class AIProposalRequest(BaseModel):
     )
 
 
+def resolve_model_or_none():
+    """Configured Gemma model name, or None if the configuration is invalid."""
+    try:
+        return resolve_model()
+    except Exception:
+        return None
+
+
 @app.post(
     "/ai/propose",
     tags=["AI"],
@@ -243,6 +252,8 @@ def propose_ai_action(req: AIProposalRequest) -> dict:
 
     return {
         "source": outcome.source,
+        # Model name that produced this decision; None for a fallback, so a fallback is never attributed to Gemma.
+        "model": resolve_model_or_none() if outcome.source == "ai" else None,
         "used_fallback": outcome.is_fallback,
         "error_code": outcome.error_code,
         "error": outcome.error,

@@ -378,8 +378,8 @@ class CountryAgent:
         return (
             f"{build_briefing(world, self.profile)}\n\n"
             f"=== SITUATION ===\n{situation}\n\n"
-            f"Analyze: what happened, how it affects {name}, which options are available, and which single "
-            f"option best protects {name}'s interests and why. Then reply with the JSON object only."
+            f"Pick the single option that best protects {name}'s interests. Reply with the JSON object only; "
+            f"keep situation and reason to one short sentence each."
         )
 
     def propose(self, situation: str, world: Any) -> AgentResult:

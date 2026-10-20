@@ -12,7 +12,7 @@ Current world state -> India agent -> Gemini -> CountryDecision -> validation
 
 | Piece | File |
 | --- | --- |
-| Gemini connection (key from env or `.env`, never printed) | `check_gemini.py`, `gemini_client.py` |
+| Gemma-via-Gemini-API connection (key from env or `.env`, never printed) | `check_gemini.py`, `gemini_client.py` |
 | India agent, country profiles, goals and personality | `country_agent.py` |
 | World-state context (GDP, stability, resources, alliances, sanctions, trade partners and routes, relationships, recent events), read from the live simulation | `country_agent.py` (`build_briefing`) |
 | Structured, strictly validated decisions (`CountryDecision`) | `country_agent.py` |

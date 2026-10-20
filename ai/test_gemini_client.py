@@ -58,10 +58,26 @@ def test_calls_generate_content_with_system_instruction_and_json_mode(monkeypatc
 
 
 def test_model_can_be_overridden_by_env(monkeypatch):
-    monkeypatch.setenv("GEMINI_MODEL", "my-model")
+    monkeypatch.setenv("GEMINI_MODEL", "gemma-4-31b-it")
     client = install(monkeypatch, FakeClient(reply="{}"))
     gemini_client.generate_json_text("s", "u")
-    assert client.calls[0]["model"] == "my-model"
+    assert client.calls[0]["model"] == "gemma-4-31b-it"
+
+
+def test_default_model_is_a_gemma_model():
+    assert DEFAULT_MODEL.startswith("gemma-")
+    assert gemini_client.resolve_model() == DEFAULT_MODEL
+
+
+@pytest.mark.parametrize("bad", ["gemini-2.5-flash", "gemini-3.5-flash", "my-model"])
+def test_non_gemma_model_is_refused_and_no_call_is_made(monkeypatch, bad):
+    monkeypatch.setenv("GEMINI_MODEL", bad)
+    client = install(monkeypatch, FakeClient(reply="{}"))
+    with pytest.raises(CheckError) as err:
+        gemini_client.generate_json_text("s", "u")
+    assert err.value.exit_code == EXIT_CONFIG
+    assert "not a Gemma model" in err.value.message
+    assert client.calls == []  # never silently runs on another model
 
 
 def test_missing_key_is_a_config_error_and_no_call_is_made(monkeypatch):
