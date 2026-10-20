@@ -12,7 +12,7 @@ const UNREACHABLE =
   "Can't reach the simulation server. Make sure the backend is running and try again.";
 
 
-async function request(path, { method = "GET", body, timeoutMs = 15000 } = {}) {
+async function request(path, { method = "GET", body, timeoutMs = 90000 } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 

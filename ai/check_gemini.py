@@ -20,7 +20,7 @@ from pathlib import Path
 
 PROMPT = "Reply with exactly: Gemini connection successful."
 EXPECTED = "Gemini connection successful."
-DEFAULT_MODEL = "gemini-3.5-flash"
+DEFAULT_MODEL = "gemma-4-26b-a4b-it"
 TIMEOUT_MS = 90_000
 PLACEHOLDER_KEY = "your_api_key_here"
 REPO_ROOT = Path(__file__).resolve().parent.parent

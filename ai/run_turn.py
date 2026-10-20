@@ -52,7 +52,7 @@ def _block(title: str, lines: list[str] | str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one AI turn for a country against the simulation.")
     parser.add_argument("situation", nargs="?", default=DEFAULT_SITUATION)
-    parser.add_argument("--country", default="aurelia", help="country id (only aurelia has an agent for now)")
+    parser.add_argument("--country", default='india', help="country id (only aurelia has an agent for now)")
     args = parser.parse_args()
 
     sim = Simulation()  # fresh starting world, in this process only
