@@ -18,9 +18,12 @@ import { askAdvisor } from "./api/client.js";
 const featuredCountries = []; // Country profiles are loaded dynamically from countries.js.
 
 const initialEvents = [
-  { type: "alert", title: "Trade tensions rising", detail: "Major economies are reviewing trade restrictions.", time: "2 min ago" },
-  { type: "deal", title: "Diplomatic talks proposed", detail: "A proposal for emergency talks is circulating.", time: "8 min ago" },
-  { type: "info", title: "Security briefing updated", detail: "New information is available to delegates.", time: "14 min ago" },
+  { type: "alert", category: "important", title: "Trade tensions rising", detail: "Major economies are reviewing trade restrictions.", time: "Turn 01", countries: "Major economies", status: "Important" },
+  { type: "deal", category: "past", title: "Diplomatic talks proposed", detail: "A proposal for emergency talks is circulating.", time: "Turn 01", countries: "Participating delegations", status: "Recorded" },
+  { type: "info", category: "past", title: "Security briefing updated", detail: "New information is available to delegates.", time: "Turn 01", countries: "Conference delegates", status: "Completed" },
+  { type: "info", category: "upcoming", title: "Emergency diplomatic summit", detail: "Delegations are scheduled to discuss rising tensions and possible de-escalation measures.", time: "Next turn", countries: "All delegations", status: "Upcoming" },
+  { type: "deal", category: "upcoming", title: "Resolution voting", detail: "Delegates will review the draft resolution and vote on the proposed measures.", time: "Next turn", countries: "Voting delegations", status: "Upcoming" },
+  { type: "alert", category: "important", title: "Sanctions review", detail: "Review the possible economic and diplomatic consequences of proposed restrictions.", time: "Turn 01", countries: "Countries named in the proposal", status: "High priority" },
 ];
 
 const tabs = [
@@ -320,6 +323,7 @@ export default function App() {
   const [target, setTarget] = useState("China");
   const [reason, setReason] = useState("Economic");
   const [events, setEvents] = useState(initialEvents);
+  const [eventFilter, setEventFilter] = useState("all");
   const [actionResult, setActionResult] = useState(null);
   const [query, setQuery] = useState("");
   const [advisorQuestion, setAdvisorQuestion] = useState("");
@@ -464,9 +468,12 @@ export default function App() {
   setEvents([
     {
       type: "alert",
+      category: "past",
       title: "Opening sanctions announced",
       detail: "The opposing delegation has opened the conference with sanctions.",
       time: "Opening move",
+      countries: `${country.name} and opposing delegation`,
+      status: "Recorded",
     },
     ...initialEvents.slice(1),
   ]);
@@ -522,9 +529,12 @@ export default function App() {
     setEvents((old) => [
       {
         type: kind === "sanctions" ? "alert" : "deal",
+        category: kind === "sanctions" ? "important" : "past",
         title: info.title,
         detail: info.description,
-        time: "Just now",
+        time: `Turn ${String(turn + 1).padStart(2, "0")}`,
+        countries: `${country.name} and ${target}`,
+        status: info.status,
       },
       ...old,
     ]);
@@ -580,9 +590,12 @@ export default function App() {
     setEvents((old) => [
       {
         type: kind === "sanctions" ? "alert" : "deal",
+        category: kind === "sanctions" ? "important" : "past",
         title: names[kind] || "Diplomatic action recorded",
         detail: cleanDetails ? `${description} Details: ${cleanDetails}` : description,
-        time: "Just now",
+        time: `Turn ${String(turn + 1).padStart(2, "0")}`,
+        countries: `${country.name} and ${actionTarget}`,
+        status: statuses[kind] || "Recorded",
       },
       ...old,
     ]);
@@ -790,9 +803,46 @@ export default function App() {
   height={520}
 /></section>}
 
-            {tab === "countries" && <section className="panel"><div className="panel-heading"><div><h2>Country intelligence</h2><p>Explore national profiles and strategic positions.</p></div><label className="search-box compact"><Search size={16} /><input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div><div className="country-table">{filteredCountries.map((c) => <button key={c.name} className="country-table-row" onClick={() => handleCountrySelect(c.name)}><span className="flag">{c.flag}</span><span><b>{c.name}</b><small>{c.role}</small></span><span><small>ECONOMY</small><b>{c.economy}</b></span><span><small>STABILITY</small><MiniBars value={c.stability} /></span><span className="table-arrow"><ArrowRight size={16} /></span></button>)}</div><div className="profile-detail"><span className="flag flag-large">{country.flag}</span><div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2><p>{country.capital} · {country.population} people · GDP {country.gdp}</p></div><span className="status-chip">{country.role}</span></div></section>}
+            {tab === "countries" && <section className="panel"><div className="panel-heading"><div><h2>Country intelligence</h2><p>Explore national profiles and strategic positions.</p></div><label className="search-box compact"><Search size={16} /><input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div><div className="profile-detail"><span className="flag flag-large">{country.flag}</span><div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2><p>{country.capital} · {country.population} people · GDP {country.gdp}</p></div><span className="status-chip">{country.role}</span></div></section>}
 
-            {tab === "events" && <section className="panel"><div className="panel-heading"><div><h2>Diplomatic events</h2><p>A timeline of activity in your simulation.</p></div><span className="count-pill">{events.length} EVENTS</span></div><div className="event-list event-list-large">{events.map((e, i) => <div className="event-row" key={`${e.title}-${i}`}><span className={`event-icon ${e.type}`}>{e.type === "alert" ? <AlertTriangle size={17} /> : <Handshake size={17} />}</span><div><b>{e.title}</b><p>{e.detail}</p><small>{e.time} · Practice simulation</small></div></div>)}</div></section>}
+            {tab === "events" && (() => {
+              const eventFilters = [
+                { id: "all", label: "All Events" },
+                { id: "upcoming", label: "Upcoming Events" },
+                { id: "past", label: "Past Events" },
+                { id: "important", label: "Important Events" },
+              ];
+              const filteredEvents = events.filter((event) => eventFilter === "all" || event.category === eventFilter);
+              return <section className="panel">
+                <div className="panel-heading">
+                  <div><h2>Diplomatic events</h2><p>Upcoming plans, past activity, and major developments.</p></div>
+                  <span className="count-pill">{filteredEvents.length} EVENTS</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "18px 0 22px" }} role="tablist" aria-label="Filter events">
+                  {eventFilters.map((filter) => (
+                    <button key={filter.id} type="button" role="tab" aria-selected={eventFilter === filter.id} onClick={() => setEventFilter(filter.id)}
+                      style={{ padding: "10px 14px", borderRadius: 9, border: `1px solid ${eventFilter === filter.id ? "#2878ad" : "#203b55"}`, background: eventFilter === filter.id ? "#123451" : "#091a2b", color: eventFilter === filter.id ? "#63d0ff" : "#9bb0c5", cursor: "pointer", font: "inherit", fontSize: 13 }}>
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="event-list event-list-large">
+                  {filteredEvents.length === 0 ? <p className="panel-note">No events in this category yet. Events will appear here as the simulation progresses.</p> : filteredEvents.map((e, i) => (
+                    <div className="event-row" key={`${e.title}-${i}`}>
+                      <span className={`event-icon ${e.type}`}>{e.type === "alert" ? <AlertTriangle size={17} /> : e.type === "deal" ? <Handshake size={17} /> : <Globe2 size={17} />}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 9 }}>
+                          <b>{e.title}</b>
+                          <span style={{ fontSize: 10, letterSpacing: ".07em", textTransform: "uppercase", border: `1px solid ${e.category === "important" ? "#70434c" : e.category === "upcoming" ? "#28577a" : "#315346"}`, color: e.category === "important" ? "#ff9ba8" : e.category === "upcoming" ? "#72d2ff" : "#75ddb4", background: e.category === "important" ? "#351d2a" : e.category === "upcoming" ? "#102b40" : "#102b27", borderRadius: 5, padding: "4px 7px" }}>{e.status || e.category}</span>
+                        </div>
+                        <p>{e.detail}</p>
+                        <small>{e.time || "Simulation log"} · {e.countries || "Conference delegations"} · Practice simulation</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>;
+            })()}
 
             {tab === "analytics" && <>
               <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value="72/100" color="green" /><Metric icon={TrendingUp} label="Global tension" value="41/100" color="red" /><Metric icon={Handshake} label="Active alliances" value="03" color="purple" /><Metric icon={Target} label="Recorded actions" value={String(turn - 1).padStart(2, "0")} color="gold" /></div>

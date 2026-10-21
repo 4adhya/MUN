@@ -1,0 +1,88 @@
+/* National Challenges — additions for DashboardInteractions */
+.national-challenges-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.nc-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.nc-card {
+  min-width: 0;
+  border: 1px solid #24435d;
+  border-radius: 10px;
+  background: #091827;
+  overflow: hidden;
+  transition: border-color .18s ease, background .18s ease;
+}
+.nc-card.is-expanded {
+  border-color: #3284bd;
+  background: #0c1d2e;
+}
+.nc-card-toggle {
+  width: 100%;
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border: 0;
+  color: #e7effa;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.nc-number {
+  color: #50c7fa;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.nc-title {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+.nc-toggle-mark {
+  color: #50c7fa;
+  font-size: 22px;
+  text-align: center;
+}
+.nc-card-content {
+  padding: 0 16px 18px;
+  animation: nc-reveal .18s ease-out;
+}
+.nc-label {
+  display: block;
+  margin: 8px 0 7px;
+  color: #6fcaf2;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.35px;
+}
+.nc-card-content p {
+  margin: 0 0 15px;
+  color: #a8bbcf;
+  font-size: 12px;
+  line-height: 1.75;
+}
+.nc-card-content p:last-child { margin-bottom: 0; }
+.nc-disclaimer {
+  margin: 18px 0 0;
+  color: #8296ad;
+  font-size: 11px;
+  line-height: 1.7;
+}
+@keyframes nc-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 1000px) {
+  .nc-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 650px) {
+  .nc-cards { grid-template-columns: 1fr; }
+  .nc-card-toggle { min-height: 64px; padding: 14px; }
+  .nc-card-content { padding: 0 14px 16px; }
+}
