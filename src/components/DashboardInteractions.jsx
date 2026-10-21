@@ -90,7 +90,48 @@ function formatMoney(value) {
   }).format(Number(value));
 }
 
-function CountryInformation({ countryName }) {
+function makeLocalCountry(profile, countryName) {
+  if (!profile) return null;
+  const name = profile.name || countryName;
+  return {
+    name: {
+      common: name,
+      official: profile.officialName || name,
+    },
+    cca2: profile.code || "",
+    cca3: profile.iso3 || "",
+    capital: profile.capital ? [profile.capital] : [],
+    region: profile.region || "",
+    subregion: profile.subregion || "",
+    population: profile.populationValue ?? null,
+    area: profile.areaValue ?? null,
+    areaLabel: profile.area || profile.areaLabel || "",
+    currencies: profile.currencies || {},
+    currencyLabel: profile.currency || profile.currencyLabel || "",
+    languages: profile.languages && typeof profile.languages === "object"
+      ? profile.languages
+      : {},
+    languageLabel: profile.languages && typeof profile.languages === "string"
+      ? profile.languages
+      : profile.languageLabel || "",
+    flags: profile.flagImage ? { svg: profile.flagImage } : {},
+    timezones: [],
+    continents: [],
+    idd: {},
+    tld: [],
+    unMember: null,
+    independent: null,
+    landlocked: null,
+    borders: [],
+    latlng: [],
+    coatOfArms: {},
+    maps: {},
+    car: {},
+    startOfWeek: "",
+  };
+}
+
+function CountryInformation({ countryName, countryProfile }) {
   const [country, setCountry] = useState(null);
   const [gdp, setGdp] = useState(null);
   const [militarySpending, setMilitarySpending] = useState(null);
@@ -109,7 +150,7 @@ function CountryInformation({ countryName }) {
     async function loadCountry() {
       setLoading(true);
       setError("");
-      setCountry(null);
+      setCountry(makeLocalCountry(countryProfile, countryName));
       setGdp(null);
       setMilitarySpending(null);
 
@@ -224,9 +265,14 @@ function CountryInformation({ countryName }) {
         }
       } catch (err) {
         if (err.name !== "AbortError") {
-          setError(
-            err.message || "Unable to load country information."
-          );
+          // Keep the dashboard useful if the external country API is offline.
+          const localCountry = makeLocalCountry(countryProfile, countryName);
+          if (localCountry) {
+            setCountry(localCountry);
+            setError("");
+          } else {
+            setError(err.message || "Unable to load country information.");
+          }
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -238,9 +284,9 @@ function CountryInformation({ countryName }) {
     loadCountry();
 
     return () => controller.abort();
-  }, [countryName]);
+  }, [countryName, countryProfile]);
 
-  if (loading) {
+  if (loading && !country) {
     return (
       <div className="di-message">
         <LoaderCircle className="di-spin" size={20} />
@@ -256,12 +302,13 @@ function CountryInformation({ countryName }) {
   if (!country) return null;
 
   const currencies = Object.values(country.currencies || {})
-    .map((item) =>
-      `${item.name}${item.symbol ? ` (${item.symbol})` : ""}`
-    )
-    .join(", ");
+    .map((item) => typeof item === "string"
+      ? item
+      : `${item.name || ""}${item.symbol ? ` (${item.symbol})` : ""}`)
+    .filter(Boolean)
+    .join(", ") || country.currencyLabel || "";
 
-  const languages = Object.values(country.languages || {}).join(", ");
+  const languages = Object.values(country.languages || {}).join(", ") || country.languageLabel || "";
 
   const details = [
     ["Official name", country.name?.official],
@@ -271,9 +318,9 @@ function CountryInformation({ countryName }) {
     ["Population", formatNumber(country.population)],
     [
       "Area",
-      country.area == null
-        ? null
-        : `${formatNumber(country.area)} km²`,
+      country.area != null
+        ? `${formatNumber(country.area)} km²`
+        : country.areaLabel || null,
     ],
     ["Currency", currencies],
     ["Languages", languages],
@@ -328,7 +375,11 @@ function CountryInformation({ countryName }) {
         ? `${militarySpending.value}% · ${militarySpending.year}`
         : null,
     ],
-  ];
+  ].filter(([, value]) => {
+    if (value == null || value === "") return false;
+    if (typeof value === "string" && value.trim().toLowerCase() === "not available") return false;
+    return true;
+  });
 
   return (
     <div className="di-country">
@@ -360,7 +411,7 @@ function CountryInformation({ countryName }) {
         {details.map(([label, value]) => (
           <div className="di-detail" key={label}>
             <span>{label}</span>
-            <strong>{value || "Not available"}</strong>
+            <strong>{value}</strong>
           </div>
         ))}
       </div>
@@ -390,6 +441,7 @@ function CountryInformation({ countryName }) {
 
 export default function DashboardInteractions({
   countryName = "India",
+  countryProfile = null,
   onSubmitAction,
 }) {
   const [activeAction, setActiveAction] = useState(null);
@@ -582,7 +634,7 @@ export default function DashboardInteractions({
           <Globe2 size={22} />
         </div>
 
-        <CountryInformation countryName={countryName} />
+        <CountryInformation countryName={countryName} countryProfile={countryProfile} />
       </section>
     </div>
   );

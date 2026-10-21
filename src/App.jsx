@@ -779,6 +779,7 @@ export default function App() {
               </div>
               <DashboardInteractions
                 countryName={country.name}
+                countryProfile={country}
                 onSubmitAction={handleDashboardAction}
               />
             </>}
