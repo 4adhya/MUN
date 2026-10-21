@@ -336,13 +336,13 @@ def test_ai_agent_can_observe_decide_and_act_with_existing_endpoints(monkeypatch
     history = client.get("/events").json()                                # remember
     assert history[0]["actor"] == richest["id"] and history[0]["target"] == weakest["id"]
 
-    # Execution still goes through /actions/*: /ai/propose is the only AI-specific path, and there is no agent API.
+    # Execution still goes through /actions/*: /ai/propose and /ai/advisor (advice only) are the only AI paths, and there is no agent API.
     ai_paths = sorted(p for p in app.openapi()["paths"] if "agent" in p or "ai" in p.split("/"))
-    assert ai_paths == ["/ai/propose"]
+    assert ai_paths == ["/ai/advisor", "/ai/propose"]  # advisor chat = advice only; execution is still /actions/*
 
 
-# 14. /ai/propose names the Gemma model for AI decisions, and never for a fallback ---------------------------
-def test_ai_proposal_reports_gemma_model_and_fallback_reports_none(monkeypatch):
+# 14. /ai/propose names the Gemma model for AI decisions; an AI failure is an explicit failure, never a decision ---
+def test_ai_proposal_reports_gemma_model_and_ai_failure_is_not_a_decision(monkeypatch):
     real_agent = backend_main.CountryAgent
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
     monkeypatch.setattr(backend_main, "resolve_model", lambda: "gemma-4-26b-a4b-it")
@@ -352,16 +352,18 @@ def test_ai_proposal_reports_gemma_model_and_fallback_reports_none(monkeypatch):
 
     monkeypatch.setattr(backend_main, "CountryAgent", lambda profile: real_agent(profile, llm=boom))
     body = {"country_id": "india", "situation": "Test incident."}
-    fallback = post("/ai/propose", body).json()
-    assert fallback["used_fallback"] is True and fallback["source"] == "fallback"
-    assert fallback["model"] is None                                      # a fallback is never attributed to Gemma
-    assert fallback["decision"]["decision"] == "NO_ACTION"
+    r = post("/ai/propose", body)
+    failed = r.json()
+    assert r.status_code == 502
+    assert failed["status"] == "AI_REQUEST_FAILED" and failed["reason"] == "GEMINI_UNEXPECTED_ERROR"
+    assert failed["decision"] is None and failed["source"] is None and failed["used_fallback"] is False
+    assert "NO_ACTION" not in json.dumps(failed)                          # an AI failure is never a NO_ACTION decision
     assert client.get("/events").json() == []                             # and it changed nothing
 
     canned = json.dumps({"country": "India", "situation": "s", "decision": "NO_ACTION", "target": None, "reason": "r"})
     monkeypatch.setattr(backend_main, "CountryAgent", lambda profile: real_agent(profile, llm=lambda s, u: canned))
     ok = post("/ai/propose", body).json()
-    assert ok["source"] == "ai" and ok["model"] == "gemma-4-26b-a4b-it"
+    assert ok["status"] == "SUCCESS" and ok["source"] == "ai" and ok["model"] == "gemma-4-26b-a4b-it"
 
 
 if __name__ == "__main__":

@@ -20,7 +20,10 @@ from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator, model_validator
 
-from ai.check_gemini import CheckError  # Phase 1 error type (its message never contains the key)
+from ai.check_gemini import EXIT_CONFIG, CheckError  # Phase 1 error type (its message never contains the key)
+from ai.gemini_client import REASON_CONFIG, REASON_GENERIC, REASON_UNEXPECTED
+
+REASON_INVALID_RESPONSE = "INVALID_AI_RESPONSE"  # Gemini answered, but not with a valid decision
 
 MAX_SITUATION_CHARS = 1000
 MAX_RAW_ECHO_CHARS = 500
@@ -91,6 +94,13 @@ class AgentResult(BaseModel):
     )
     error: Optional[str] = None
     raw_response: Optional[str] = Field(default=None, description="Truncated Gemini reply, only for invalid_response")
+    # Machine-readable failure details (None when ok). A failed result is NEVER a decision, in particular never NO_ACTION.
+    failure_reason: Optional[str] = Field(
+        default=None,
+        description="e.g. GEMINI_HTTP_500, GEMINI_HTTP_503, GEMINI_TIMEOUT, INVALID_AI_RESPONSE, AI_CONFIGURATION_ERROR",
+    )
+    http_status: Optional[int] = Field(default=None, description="Upstream Gemini HTTP status, when there was one")
+    attempts: Optional[int] = Field(default=None, description="How many Gemini attempts were made")
 
 
 class ResponseError(ValueError):
@@ -391,7 +401,9 @@ class CountryAgent:
         if llm is None:
             from ai.gemini_client import generate_json_text  # no key is needed until propose() is called
 
-            llm = generate_json_text
+            def llm(system_prompt: str, user_prompt: str) -> str:  # the country only labels the log lines
+                return generate_json_text(system_prompt, user_prompt, country=self.profile.name)
+
         self._llm = llm
 
     def build_system_prompt(self) -> str:
@@ -419,17 +431,34 @@ class CountryAgent:
         try:
             raw = self._llm(system_prompt, user_prompt)
         except CheckError as err:  # Phase 1 error: clear message, no key
-            return AgentResult(ok=False, error_code="gemini_error", error=err.message)
+            reason = getattr(err, "reason", None) or (REASON_CONFIG if err.exit_code == EXIT_CONFIG else REASON_GENERIC)
+            return AgentResult(
+                ok=False,
+                error_code="gemini_error",
+                error=err.message,
+                failure_reason=reason,
+                http_status=getattr(err, "http_status", None),
+                attempts=getattr(err, "attempts", None),
+            )
         except Exception as exc:  # type only: never echo a message that might hold sensitive text
             return AgentResult(
-                ok=False, error_code="gemini_error", error=f"Unexpected error calling Gemini ({type(exc).__name__})"
+                ok=False,
+                error_code="gemini_error",
+                error=f"Unexpected error calling Gemini ({type(exc).__name__})",
+                failure_reason=REASON_UNEXPECTED,
             )
 
         try:
             decision = parse_decision(raw, world, self.profile)
         except ResponseError as err:
             echo = raw[:MAX_RAW_ECHO_CHARS] if isinstance(raw, str) else repr(raw)[:MAX_RAW_ECHO_CHARS]
-            return AgentResult(ok=False, error_code="invalid_response", error=str(err), raw_response=echo)
+            return AgentResult(
+                ok=False,
+                error_code="invalid_response",
+                error=str(err),
+                raw_response=echo,
+                failure_reason=REASON_INVALID_RESPONSE,
+            )
         return AgentResult(ok=True, decision=decision)
 
     @staticmethod

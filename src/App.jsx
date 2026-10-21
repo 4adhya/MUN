@@ -1,4 +1,3 @@
-
 import ScrollReveal from "./components/ScrollReveal";
 import { useEffect, useRef, useState } from "react";
 import Globe from "react-globe.gl";
@@ -13,6 +12,7 @@ import "./PoliticaRedesign.css";
 import WorldMap from "./components/WorldMap";
 import ConferenceRoom from "./components/ConferenceRoom";
 import { getAllCountryProfiles } from "./data/countries.js";
+import { askAdvisor } from "./api/client.js";
 
 const featuredCountries = []; // Country profiles are loaded dynamically from countries.js.
 
@@ -294,6 +294,10 @@ export default function App() {
   const [actionResult, setActionResult] = useState(null);
   const [query, setQuery] = useState("");
   const [advisorQuestion, setAdvisorQuestion] = useState("");
+  const [advisorMessages, setAdvisorMessages] = useState([]);
+  const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorError, setAdvisorError] = useState("");
+  const advisorEndRef = useRef(null);
   const [showAdvisor, setShowAdvisor] = useState(false);
   const [notice, setNotice] = useState("");
   const [turn, setTurn] = useState(1);
@@ -362,12 +366,42 @@ export default function App() {
     setNotice("");
   }
 
+  useEffect(() => {
+    advisorEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [advisorMessages, advisorLoading, advisorError]);
+
+  async function sendAdvisorQuestion(event) {
+    event.preventDefault();
+    const text = advisorQuestion.trim();
+    if (!text || advisorLoading) return;
+
+    const history = advisorMessages.slice(-16);
+    setAdvisorMessages([...advisorMessages, { role: "user", text }]);
+    setAdvisorQuestion("");
+    setAdvisorError("");
+    setAdvisorLoading(true);
+
+    try {
+      const result = await askAdvisor(countryName.trim().toLowerCase().replace(/\s+/g, "-"), text, history);
+      setAdvisorMessages((previous) => [...previous, { role: "advisor", text: result.reply }]);
+    } catch (error) {
+      // No advice was produced: take the question back out of the thread so the delegate can simply retry.
+      setAdvisorMessages((previous) => previous.slice(0, -1));
+      setAdvisorQuestion(text);
+      setAdvisorError(error?.message || "The advisor could not respond. Please retry.");
+    } finally {
+      setAdvisorLoading(false);
+    }
+  }
+
   function enterGame() {
   setScreen("game");
   setTab("conference");
   setTurn(1);
   setActionResult(null);
   setShowAdvisor(false);
+  setAdvisorMessages([]);
+  setAdvisorError("");
   setEvents([
     {
       type: "alert",
@@ -602,7 +636,31 @@ export default function App() {
 
       {screen === "result" && <main className="result-screen"><div className="result-card"><div className="result-check"><Check size={28} /></div><span className="eyebrow">ACTION RECORDED / PRACTICE MODE</span><h1>{actionResult?.title || "Action recorded"}</h1><p>{actionResult?.description}</p><div className="result-impact"><div><span>TARGET</span><b>{countryList.find((c) => c.name === actionResult?.target)?.flag} {actionResult?.target}</b></div><div><span>ACTION TYPE</span><b>{actionResult?.reason}</b></div><div><span>SIMULATION TURN</span><b>{String(turn).padStart(2, "0")}</b></div></div><div className="notice-box"><AlertTriangle size={17} /><p>This is a frontend demonstration. It does not apply real sanctions or change real-world events.</p></div><div className="result-actions"><button className="button button-secondary" onClick={() => { setScreen("game"); setTab("dashboard"); }}>Return to dashboard</button><button className="button" onClick={() => { setScreen("game"); setTab("map"); }}>View world map <ArrowRight size={16} /></button></div></div></main>}
 
-      {showAdvisor && screen === "game" && <aside className="advisor-drawer"><div className="advisor-header"><div className="advisor-avatar"><MessageSquare size={18} /></div><div><b>Diplomatic advisor</b><small>UI preview · AI paused</small></div><button className="icon-button" onClick={() => setShowAdvisor(false)}><X size={17} /></button></div><div className="advisor-message"><span className="eyebrow">STRATEGIC NOTE</span><p>Review your delegation's interests, assess potential consequences, and consider whether negotiation or pressure best serves your objectives.</p></div><div className="advisor-suggestion"><b>Questions to consider</b><ul><li>What outcome matters most to your country?</li><li>How might the target country respond?</li><li>Could negotiation achieve the same goal?</li></ul></div><form className="advisor-form" onSubmit={(e) => { e.preventDefault(); setNotice("Advisor chat will be connected in a later phase."); setAdvisorQuestion(""); }}><input placeholder="Ask your advisor..." value={advisorQuestion} onChange={(e) => setAdvisorQuestion(e.target.value)} /><button className="button button-icon" aria-label="Send question"><Send size={16} /></button></form></aside>}
+      {showAdvisor && screen === "game" && (
+        <aside className="advisor-drawer">
+          <div className="advisor-header">
+            <div className="advisor-avatar"><MessageSquare size={18} /></div>
+            <div><b>Diplomatic advisor</b><small>{countryName} delegation · advice only</small></div>
+            <button className="icon-button" onClick={() => setShowAdvisor(false)}><X size={17} /></button>
+          </div>
+          <div className="advisor-chat">
+            {advisorMessages.length === 0 && (
+              <>
+                <div className="advisor-message"><span className="eyebrow">STRATEGIC NOTE</span><p>Ask about your options, the likely reaction of other countries, or the cost of escalation. I advise from the live simulation state; you decide what to do.</p></div>
+                <div className="advisor-suggestion"><b>Try asking</b><ul>{["What outcome matters most to us right now?", "How might the target country respond?", "Could negotiation achieve the same goal?"].map((q) => <li key={q}><button type="button" className="advisor-chip" onClick={() => setAdvisorQuestion(q)}>{q}</button></li>)}</ul></div>
+              </>
+            )}
+            {advisorMessages.map((m, i) => <div key={i} className={`advisor-bubble ${m.role}`}>{m.text}</div>)}
+            {advisorLoading && <div className="advisor-bubble advisor advisor-typing">Advisor is thinking…</div>}
+            {advisorError && <p className="advisor-error" role="alert">{advisorError}</p>}
+            <div ref={advisorEndRef} />
+          </div>
+          <form className="advisor-form" onSubmit={sendAdvisorQuestion}>
+            <input placeholder="Ask your advisor..." value={advisorQuestion} maxLength={1000} disabled={advisorLoading} onChange={(e) => setAdvisorQuestion(e.target.value)} />
+            <button className="button button-icon" aria-label="Send question" disabled={advisorLoading || !advisorQuestion.trim()}><Send size={16} /></button>
+          </form>
+        </aside>
+      )}
 
       {modal && <div className="modal-backdrop" onClick={() => setModal("")}><section className="action-modal" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">DIPLOMATIC ACTION / CONFIGURATION</span><h2>{modal === "sanctions" ? "Propose sanctions" : modal === "alliance" ? "Form an alliance" : modal === "aid" ? "Send assistance" : "Open negotiations"}</h2></div><button className="icon-button" onClick={() => setModal("")}><X size={18} /></button></div><p className="modal-description">Configure your proposal. This demo records your selection locally.</p><label className="form-label">Target country</label><div className="select-wrap"><span className="flag">{targetCountry.flag}</span><select value={target} onChange={(e) => setTarget(e.target.value)}>{countryList.filter((c) => c.name !== country.name).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select><ChevronDown size={16} /></div><label className="form-label">Policy objective</label><div className="reason-options">{["Economic","Diplomatic","Security"].map((r) => <button key={r} className={reason === r ? "active" : ""} onClick={() => setReason(r)}>{r}</button>)}</div><div className="consequence-preview"><span className="eyebrow">CONSIDER BEFORE ACTING</span><p>{modal === "sanctions" ? "Sanctions can increase pressure but may also damage trade and diplomatic relations." : modal === "alliance" ? "An alliance can strengthen cooperation but may create new commitments." : modal === "aid" ? "Assistance can build trust and support stability but requires resources." : "Negotiations can reduce tensions but may require compromise."}</p></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setModal("")}>Cancel</button><button className="button" onClick={() => submitAction(modal)}>{modal === "sanctions" ? "Submit proposal" : modal === "alliance" ? "Propose alliance" : modal === "aid" ? "Send proposal" : "Request talks"} <ArrowRight size={16} /></button></div></section></div>}
       {notice && <div className="toast">{notice}<button onClick={() => setNotice("")}><X size={14} /></button></div>}

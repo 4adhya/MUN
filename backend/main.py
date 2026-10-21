@@ -1,4 +1,3 @@
-
 """FastAPI entry point for the WorldEvent geopolitical simulation.
 
 Run from the project root:
@@ -17,6 +16,8 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 AI_DIR = Path(__file__).resolve().parent.parent / "ai"
@@ -24,9 +25,9 @@ AI_DIR = Path(__file__).resolve().parent.parent / "ai"
 if str(AI_DIR) not in sys.path:
     sys.path.insert(0, str(AI_DIR))
 
-from ai.country_agent import COUNTRY_PROFILES, AgentProfile, CountryAgent
-from ai.fallback import decide_with_fallback
-from ai.gemini_client import resolve_model
+from ai.advisor import MAX_HISTORY_TURNS, MAX_MESSAGE_CHARS, DiplomaticAdvisor
+from ai.country_agent import COUNTRY_PROFILES, AgentProfile, AgentResult, CountryAgent
+from ai.gemini_client import REASON_CONFIG, resolve_model
 
 from .conference_schemas import (
     ConferenceCreateRequest,
@@ -298,6 +299,69 @@ def resolve_model_or_none():
         return None
 
 
+def resolve_ai_profile(world, country_id: str) -> AgentProfile:
+    """The AI identity for any identifier the client sends ("India", "india", "IND", "afghanistan", ...).
+
+    Resolved through the country dataset; the simulated world is only needed for the live state briefing.
+    Raises HTTPException 404 for an unknown country and 400 for a simulated country without an AI profile.
+    """
+    country = find_world_country(world, country_id)
+    record = resolve_country(country_id)
+
+    if country is None and record is None:
+        raise HTTPException(status_code=404, detail=f"Country '{country_id}' not found")
+
+    if country is not None:
+        # The selected country determines the identity of the agent.
+        profile = COUNTRY_PROFILES.get(country.id)
+        if profile is None:
+            profile = COUNTRY_PROFILES.get(country.id.replace("_", "-"))
+        if profile is None:
+            raise HTTPException(status_code=400, detail=f"No AI profile configured for {country.name}")
+        return profile
+
+    # A real country that is not simulated: derive its profile from the dataset record.
+    return profile_from_record(record)
+
+
+AI_STATUS_SUCCESS = "SUCCESS"
+AI_STATUS_FAILED = "AI_REQUEST_FAILED"
+
+
+def ai_failure_response(country_name: str, result: Any) -> JSONResponse:  # AgentResult or AdvisorResult
+    """The explicit answer when no AI decision exists (Gemini failed or its reply was unusable).
+
+    Deliberately NOT shaped like a decision: there is no `decision` object and no NO_ACTION, so a client can
+    never mistake an AI failure for a country that chose to do nothing. The world is never touched.
+    HTTP 502 (upstream/AI failure) or 503 (the AI is not configured); `detail` is the human-readable text the
+    existing frontend client already shows.
+    """
+    reason = result.failure_reason or AI_STATUS_FAILED
+    logger.warning(
+        "ai proposal failed country=%s reason=%s upstream_http_status=%s attempts=%s",
+        country_name, reason, result.http_status, result.attempts,
+    )
+    return JSONResponse(
+        status_code=503 if reason == REASON_CONFIG else 502,
+        content={
+            "status": AI_STATUS_FAILED,
+            "reason": reason,
+            "error_code": result.error_code,
+            "detail": (
+                f"AI request failed ({reason}): {result.error} "
+                "No decision was made and the simulation was not changed."
+            ),
+            "country": country_name,
+            "upstream_http_status": result.http_status,
+            "attempts": result.attempts,
+            "model_attempted": resolve_model_or_none(),
+            "source": None,
+            "used_fallback": False,
+            "decision": None,
+        },
+    )
+
+
 @app.post(
     "/ai/propose",
     tags=["AI"],
@@ -307,51 +371,57 @@ def propose_ai_action(req: AIProposalRequest) -> dict:
     """Generate a validated proposal without executing it."""
 
     world = simulation.world
-
-    # Any identifier the client sends ("India", "india", "IND", "afghanistan", "AFG", ...) is resolved
-    # through the country dataset; the simulated world is only needed for the live state briefing.
-    country = find_world_country(world, req.country_id)
-    record = resolve_country(req.country_id)
-
-    if country is None and record is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Country '{req.country_id}' not found",
-        )
-
-    if country is not None:
-        # The selected country determines the identity of the agent.
-        profile = COUNTRY_PROFILES.get(country.id)
-
-        if profile is None:
-            profile = COUNTRY_PROFILES.get(
-                country.id.replace("_", "-")
-            )
-
-        if profile is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No AI profile configured for {country.name}",
-            )
-    else:
-        # A real country that is not simulated: derive its profile from the dataset record.
-        profile = profile_from_record(record)
+    profile = resolve_ai_profile(world, req.country_id)
     agent = CountryAgent(profile)
 
-    outcome = decide_with_fallback(
-        agent,
-        req.situation,
-        world,
-    )
+    # An AI failure is NEVER turned into a decision: no fallback NO_ACTION is fabricated here.
+    result = agent.propose(req.situation, world)
+    if not result.ok:
+        return ai_failure_response(profile.name, result)
 
     return {
-        "source": outcome.source,
-        # Model name that produced this decision; None for a fallback, so a fallback is never attributed to Gemma.
-        "model": resolve_model_or_none() if outcome.source == "ai" else None,
-        "used_fallback": outcome.is_fallback,
-        "error_code": outcome.error_code,
-        "error": outcome.error,
-        "decision": outcome.decision.model_dump(mode="json"),
+        "status": AI_STATUS_SUCCESS,
+        "source": "ai",
+        "model": resolve_model_or_none(),
+        "used_fallback": False,
+        "error_code": None,
+        "error": None,
+        "decision": result.decision.model_dump(mode="json"),
+    }
+
+
+class AdvisorTurn(BaseModel):
+    role: Literal["user", "advisor"]
+    text: str = Field(max_length=MAX_MESSAGE_CHARS)
+
+
+class AdvisorChatRequest(BaseModel):
+    country_id: str = Field(default="india", min_length=1, max_length=64)
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    history: list[AdvisorTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS * 2)
+
+
+@app.post(
+    "/ai/advisor",
+    tags=["AI"],
+    summary="Ask the diplomatic advisor (advice only)",
+)
+def ask_advisor(req: AdvisorChatRequest) -> Any:
+    """Free-text strategic advice grounded in the live world state. Never executes anything or changes the world."""
+    if not req.message.strip():
+        raise HTTPException(status_code=422, detail="message must not be blank")
+    world = simulation.world
+    profile = resolve_ai_profile(world, req.country_id)
+
+    result = DiplomaticAdvisor(profile).reply(req.message, [t.model_dump() for t in req.history], world)
+    if not result.ok:
+        return ai_failure_response(profile.name, result)
+
+    return {
+        "status": AI_STATUS_SUCCESS,
+        "country": profile.name,
+        "reply": result.reply,
+        "model": resolve_model_or_none(),
     }
 
 

@@ -84,6 +84,14 @@ export const proposeAI = (countryId, situation, { timeoutMs = 60000 } = {}) =>
   });
 
 
+export const askAdvisor = (countryId, message, history = [], { timeoutMs = 60000 } = {}) =>
+  request("/ai/advisor", {
+    method: "POST",
+    body: { country_id: countryId, message, history },
+    timeoutMs,
+  });
+
+
 export const sanction = (actor, target) =>
   request("/actions/sanction", {
     method: "POST",
