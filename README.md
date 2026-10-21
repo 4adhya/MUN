@@ -62,7 +62,7 @@ Country Agent
         +--> Decision Prompt
         |
         v
-Gemma 4 via Gemini API
+Gemma 4 via API
         |
         v
 JSON Response
