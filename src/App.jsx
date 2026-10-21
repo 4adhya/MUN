@@ -788,7 +788,7 @@ export default function App() {
   selectedCountry={countryName}
   onCountrySelect={handleCountrySelect}
   height={520}
-/><div className="country-chips">{countryList.map((c) => <button key={c.name} className={countryName === c.name ? "active" : ""} onClick={() => handleCountrySelect(c.name)}>{c.flag} {c.name}</button>)}</div></section>}
+/></section>}
 
             {tab === "countries" && <section className="panel"><div className="panel-heading"><div><h2>Country intelligence</h2><p>Explore national profiles and strategic positions.</p></div><label className="search-box compact"><Search size={16} /><input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div><div className="country-table">{filteredCountries.map((c) => <button key={c.name} className="country-table-row" onClick={() => handleCountrySelect(c.name)}><span className="flag">{c.flag}</span><span><b>{c.name}</b><small>{c.role}</small></span><span><small>ECONOMY</small><b>{c.economy}</b></span><span><small>STABILITY</small><MiniBars value={c.stability} /></span><span className="table-arrow"><ArrowRight size={16} /></span></button>)}</div><div className="profile-detail"><span className="flag flag-large">{country.flag}</span><div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2><p>{country.capital} · {country.population} people · GDP {country.gdp}</p></div><span className="status-chip">{country.role}</span></div></section>}
 
