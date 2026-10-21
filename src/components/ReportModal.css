@@ -1,0 +1,19 @@
+/* Report dialog. Reuses the conference room's backdrop, heading and button styles. */
+.rpt-modal { display:flex; flex-direction:column; width:min(720px,100%); max-height:min(86vh,860px); padding:22px; border:1px solid #2c6b90; border-radius:13px; background:linear-gradient(145deg,#0c2339,#061523); box-shadow:0 22px 80px #0009; color:#c8deef; }
+.rpt-head-actions { display:flex; gap:8px; }
+.rpt-body { overflow-y:auto; padding-right:6px; }
+.rpt-meta { display:flex; align-items:center; gap:6px; margin:0 0 12px; color:#7998b3; font-size:10px; }
+.rpt-section { margin-bottom:16px; padding-top:12px; border-top:1px solid rgba(62,136,185,.25); }
+.rpt-section h3 { display:flex; align-items:center; gap:8px; margin:0 0 8px; color:#e6f4ff; font-size:12px; letter-spacing:.4px; }
+.rpt-count { padding:1px 7px; border-radius:99px; background:#0a2a44; color:#8fd0f5; font-size:9px; }
+.rpt-section ul, .rpt-section ol { margin:0; padding-left:18px; font-size:11px; line-height:1.7; }
+.rpt-section small { color:#7998b3; }
+.rpt-summary { margin:0 0 8px; font-size:12px; line-height:1.7; color:#e6f4ff; }
+.rpt-empty { margin:0; color:#91abc1; font-size:11px; }
+.rpt-state { padding:24px 0; color:#91abc1; font-size:12px; text-align:center; }
+.rpt-error { color:#ff8492; }
+.rpt-modal button:disabled { opacity:.5; cursor:not-allowed; }
+
+/* Always-visible shortcut so the report is reachable from anywhere on the long conference page. */
+.rpt-fab { position:fixed; z-index:998; right:24px; bottom:24px; display:inline-flex; align-items:center; gap:8px; padding:11px 16px; border:1px solid #53c6ff; border-radius:999px; background:#072b48; color:#e2f4ff; font-size:12px; font-weight:700; box-shadow:0 10px 30px #0008; cursor:pointer; }
+.rpt-fab:hover { background:#0c3d61; }

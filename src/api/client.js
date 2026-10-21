@@ -72,6 +72,9 @@ export const getCountry = (id) =>
 export const getEvents = (limit = 100) =>
   request(`/events?limit=${limit}`);
 
+// Read-only: summarises the recorded simulation. Safe to call repeatedly.
+export const getReport = () => request("/simulation/report");
+
 
 export const proposeAI = (countryId, situation, { timeoutMs = 60000 } = {}) =>
   request("/ai/propose", {

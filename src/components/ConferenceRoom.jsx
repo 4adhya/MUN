@@ -1,5 +1,7 @@
 import OpponentCouncil from "./OpponentCouncil";
+import ReportModal from "./ReportModal";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -7,6 +9,7 @@ import {
   Bot,
   Check,
   Clock3,
+  FileText,
   Handshake,
   HeartHandshake,
   Hand,
@@ -371,6 +374,7 @@ const approveAIProposal = async () => {
   const [roomTarget, setRoomTarget] = useState(opening.opponent);
   const [roomDraft, setRoomDraft] = useState("");
   const [roomToast, setRoomToast] = useState("");
+  const [showReport, setShowReport] = useState(false);
 
   const notifyRoom = (message) => {
     setRoomToast(message);
@@ -517,6 +521,7 @@ const approveAIProposal = async () => {
         <div className="cr-header-actions">
           <span className="cr-turn-pill"><Clock3 size={15} /> TURN {String(turn).padStart(2, "0")}</span>
           <span className="cr-time-pill"><Radio size={15} /> SESSION LIVE</span>
+          <button className="cr-exit-button" onClick={() => setShowReport(true)}><FileText size={15} /> Generate Report</button>
           <button className="cr-exit-button" onClick={onExit}><X size={15} /> Exit conference</button>
         </div>
       </header>
@@ -668,6 +673,20 @@ const approveAIProposal = async () => {
             <div className="cr-modal-actions"><button type="button" className="cr-secondary-button" onClick={() => setRoomModal("")}>Cancel</button><button type="submit" className="cr-primary-button" disabled={actionLoading || (roomModal === "statement" && !roomDraft.trim())}>{actionLoading ? "Submitting…" : roomModal === "statement" ? <><Send size={14} /> Publish statement</> : roomModal === "alliance" ? <><Handshake size={15} /> Send proposal</> : <><Shield size={15} /> Submit proposal</>}</button></div>
           </form>
         </div>
+      )}
+
+      {/* Rendered on <body>: .cr-photo-page's entrance animation leaves a transform on it, which would make
+          position:fixed children position against the whole tall page instead of the visible screen. */}
+      {createPortal(
+        <div className="rpt-portal">
+          {!showReport && (
+            <button type="button" className="rpt-fab" onClick={() => setShowReport(true)} aria-label="Generate report">
+              <FileText size={16} /> Generate Report
+            </button>
+          )}
+          {showReport && <ReportModal onClose={() => setShowReport(false)} />}
+        </div>,
+        document.body
       )}
 
       <OpponentCouncil country={country} />

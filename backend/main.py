@@ -47,8 +47,10 @@ from .models import (
     WorldState,
 )
 from .mun import Participant
+from .report_schemas import SimulationReport
+from .report_service import build_report
 from .rules import ActionError
-from .simulation import simulation
+from .simulation import create_initial_world, simulation
 
 logger = logging.getLogger("worldevent")
 
@@ -249,6 +251,17 @@ def start_conference(conference_id: str) -> ConferenceSnapshot:
     return conference_service.start(conference_id)
 
 
+@app.get(
+    "/conference/{conference_id}/report",
+    response_model=SimulationReport,
+    tags=["report"],
+    summary="Report for a started conference (read-only)",
+    responses={404: CONFERENCE_ERRORS[404], 409: CONFERENCE_ERRORS[409]},
+)
+def get_conference_report(conference_id: str) -> SimulationReport:
+    return conference_service.report(conference_id)
+
+
 # ---------------------------------------------------------------------------
 # AI proposals
 # ---------------------------------------------------------------------------
@@ -423,6 +436,25 @@ def ask_advisor(req: AdvisorChatRequest) -> Any:
         "reply": result.reply,
         "model": resolve_model_or_none(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Simulation report
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/simulation/report",
+    response_model=SimulationReport,
+    tags=["report"],
+    summary="Generate the report for the current simulation (read-only)",
+    description=(
+        "Summarises only what is recorded in the simulation: its event log and the change between the "
+        "initial and current world. Never modifies state. With no actions taken it returns a valid report "
+        "with empty sections and activity_recorded=false."
+    ),
+)
+def get_simulation_report() -> SimulationReport:
+    return build_report(simulation.world, create_initial_world())
 
 
 # ---------------------------------------------------------------------------

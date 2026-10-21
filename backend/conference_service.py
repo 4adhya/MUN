@@ -34,6 +34,8 @@ from .mun import (
     UnknownCommitteeError,
     get_committee_config,
 )
+from .report_schemas import SimulationReport
+from .report_service import build_report
 from .rules import ActionError, ConflictError, NotFoundError, validate_world
 from .simulation import create_initial_world
 
@@ -263,6 +265,21 @@ class ConferenceService:
             record.world = world
             record.conference = conference
             return self._snapshot(record)
+
+    def report(self, conference_id: str) -> SimulationReport:
+        """Report on a started conference's own world. Read-only; 409 until the conference has started."""
+        with self._lock:
+            record = self._get(conference_id)
+            if record.world is None:
+                raise ConflictError(
+                    f"Conference '{conference_id}' has not started; there is no simulation data to report on"
+                )
+            return build_report(
+                record.world.model_copy(deep=True),
+                create_initial_world(),
+                conference=record.conference.model_copy(deep=True),
+                participants=[p.model_copy(deep=True) for p in record.participants],
+            )
 
     def clear(self) -> None:
         """Forget every conference (used by tests)."""
