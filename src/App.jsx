@@ -11,6 +11,7 @@ import "./App.css";
 import "./PoliticaRedesign.css";
 import WorldMap from "./components/WorldMap";
 import ConferenceRoom from "./components/ConferenceRoom";
+import DashboardInteractions from "./components/DashboardInteractions";
 import { getAllCountryProfiles } from "./data/countries.js";
 import { askAdvisor } from "./api/client.js";
 
@@ -227,6 +228,34 @@ function MiniBars({ value, color = "blue" }) {
   return <div className="mini-track"><span className={color} style={{ width: `${value}%` }} /></div>;
 }
 
+function formatCompactNumber(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "Not available";
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(Number(value));
+}
+
+function formatGDP(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "Not available";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(Number(value));
+}
+
+async function fetchLatestWorldBankIndicator(iso3, indicator, signal) {
+  const url = `https://api.worldbank.org/v2/country/${encodeURIComponent(iso3)}/indicator/${indicator}?format=json&per_page=30`;
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error("Indicator data request failed");
+  const json = await response.json();
+  const observations = Array.isArray(json?.[1]) ? json[1] : [];
+  const item = observations.find((entry) => entry?.value != null);
+  return item ? { value: item.value, year: item.date } : null;
+}
+
 
 const COUNTRY_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#a78bfa", "#fb7185", "#38bdf8"];
 
@@ -304,6 +333,11 @@ export default function App() {
   const [countryList, setCountryList] = useState([]);
   const [countryDataLoading, setCountryDataLoading] = useState(true);
   const [countryDataError, setCountryDataError] = useState("");
+  const [countryIndicators, setCountryIndicators] = useState({
+    gdp: null,
+    militarySpending: null,
+    loading: false,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -325,6 +359,31 @@ export default function App() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const iso3 = countryList.find((item) => item.name === countryName)?.iso3;
+    if (!iso3) {
+      setCountryIndicators({ gdp: null, militarySpending: null, loading: false });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setCountryIndicators({ gdp: null, militarySpending: null, loading: true });
+
+    Promise.allSettled([
+      fetchLatestWorldBankIndicator(iso3, "NY.GDP.MKTP.CD", controller.signal),
+      fetchLatestWorldBankIndicator(iso3, "MS.MIL.XPND.GD.ZS", controller.signal),
+    ]).then(([gdpResult, militaryResult]) => {
+      if (controller.signal.aborted) return;
+      setCountryIndicators({
+        gdp: gdpResult.status === "fulfilled" ? gdpResult.value : null,
+        militarySpending: militaryResult.status === "fulfilled" ? militaryResult.value : null,
+        loading: false,
+      });
+    });
+
+    return () => controller.abort();
+  }, [countryName, countryList]);
 
   const handleCountrySelect = (name) => {
     const normalized = canonicalCountryName(name);
@@ -414,27 +473,122 @@ export default function App() {
 }
 
   function submitAction(kind) {
-    const names = {
-      sanctions: "Sanctions proposal submitted",
-      alliance: "Alliance proposal",
-      aid: "Humanitarian aid proposal",
-      negotiation: "Negotiation proposal",
-    };
-    const descriptions = {
-      sanctions: `A simulated ${reason.toLowerCase()} sanctions proposal targeting ${target} has been submitted by ${country.name}.`,
-      alliance: `${country.name} has proposed a diplomatic partnership with ${target}.`,
-      aid: `${country.name} has proposed humanitarian and economic assistance involving ${target}.`,
-      negotiation: `${country.name} has requested diplomatic negotiations with ${target}.`,
+    const actionInfo = {
+      sanctions: {
+        title: "Sanctions proposal submitted",
+        description: `${country.name} has submitted a simulated ${reason.toLowerCase()} sanctions proposal targeting ${target}.`,
+        status: "Awaiting review",
+        nextStep: "Review the proposed restrictions and assess their possible economic and diplomatic consequences.",
+      },
+      alliance: {
+        title: "Alliance proposal submitted",
+        description: `${country.name} has proposed a diplomatic partnership with ${target}.`,
+        status: "Pending response",
+        nextStep: `The proposal is awaiting a response from ${target}. The alliance is not confirmed until the other delegation accepts.`,
+      },
+      aid: {
+        title: "Humanitarian aid proposed",
+        description: `${country.name} has proposed humanitarian and economic assistance involving ${target}.`,
+        status: "Awaiting review",
+        nextStep: "Review the proposed assistance and its potential humanitarian impact.",
+      },
+      negotiation: {
+        title: "Negotiations requested",
+        description: `${country.name} has requested diplomatic talks with ${target}.`,
+        status: "Awaiting response",
+        nextStep: `Diplomatic talks can proceed once ${target} responds to the request.`,
+      },
     };
 
-    setActionResult({ title: names[kind], description: descriptions[kind], target, reason: kind === "sanctions" ? reason : kind });
+    const info = actionInfo[kind] || {
+      title: "Diplomatic action recorded",
+      description: `${country.name} recorded a diplomatic action involving ${target}.`,
+      status: "Recorded",
+      nextStep: "Review the action and decide on your next diplomatic move.",
+    };
+
+    const result = {
+      ...info,
+      target,
+      initiator: country.name,
+      reason: kind === "sanctions" ? reason : kind,
+      kind,
+      turn: turn + 1,
+      details: "",
+      createdAt: new Date().toISOString(),
+    };
+
+    setActionResult(result);
     setEvents((old) => [
-      { type: kind === "sanctions" ? "alert" : "deal", title: names[kind], detail: descriptions[kind], time: "Just now" },
+      {
+        type: kind === "sanctions" ? "alert" : "deal",
+        title: info.title,
+        detail: info.description,
+        time: "Just now",
+      },
       ...old,
     ]);
     setModal("");
     setScreen("result");
-    setTurn((t) => t + 1);
+    setTurn((current) => current + 1);
+  }
+
+  async function handleDashboardAction({ action, target: actionTarget, details }) {
+    const kind = action === "negotiations" ? "negotiation" : action;
+    const names = {
+      sanctions: "Sanctions proposal submitted",
+      alliance: "Alliance proposal submitted",
+      aid: "Humanitarian aid proposed",
+      negotiation: "Negotiations requested",
+    };
+    const descriptions = {
+      sanctions: `${country.name} submitted a simulated sanctions proposal targeting ${actionTarget}.`,
+      alliance: `${country.name} proposed a diplomatic partnership with ${actionTarget}.`,
+      aid: `${country.name} proposed humanitarian and economic assistance involving ${actionTarget}.`,
+      negotiation: `${country.name} requested diplomatic negotiations with ${actionTarget}.`,
+    };
+    const statuses = {
+      sanctions: "Awaiting review",
+      alliance: "Pending response",
+      aid: "Awaiting review",
+      negotiation: "Awaiting response",
+    };
+    const nextSteps = {
+      sanctions: "Review the proposed restrictions and assess their possible economic and diplomatic consequences.",
+      alliance: `The proposal is awaiting a response from ${actionTarget}. The alliance is not confirmed until the other delegation accepts.`,
+      aid: "Review the proposed assistance and its potential humanitarian impact.",
+      negotiation: `Diplomatic talks can proceed once ${actionTarget} responds to the request.`,
+    };
+
+    const cleanDetails = typeof details === "string" ? details.trim() : "";
+    const description = descriptions[kind] || `${country.name} recorded a diplomatic action involving ${actionTarget}.`;
+
+    setTarget(actionTarget);
+    setActionResult({
+      title: names[kind] || "Diplomatic action recorded",
+      description,
+      target: actionTarget,
+      initiator: country.name,
+      reason: kind,
+      kind,
+      status: statuses[kind] || "Recorded",
+      nextStep: nextSteps[kind] || "Review the action and decide on your next diplomatic move.",
+      details: cleanDetails,
+      turn: turn + 1,
+      createdAt: new Date().toISOString(),
+    });
+    setEvents((old) => [
+      {
+        type: kind === "sanctions" ? "alert" : "deal",
+        title: names[kind] || "Diplomatic action recorded",
+        detail: cleanDetails ? `${description} Details: ${cleanDetails}` : description,
+        time: "Just now",
+      },
+      ...old,
+    ]);
+    setScreen("result");
+    setTurn((currentTurn) => currentTurn + 1);
+    return { message: "Proposal recorded in the practice simulation." };
   }
 
   return (
@@ -605,15 +759,28 @@ export default function App() {
   onCountrySelect={handleCountrySelect}
   height={350}
 /><div className="map-summary"><span><i className="legend-dot friendly" /> Partners</span><span><i className="legend-dot neutral" /> Neutral</span><span><i className="legend-dot hostile" /> Tensions</span></div></section>
-                <section className="panel status-panel"><div className="panel-heading"><div><h2>National status</h2><p>{country.flag} {country.name}</p></div><button className="icon-button" onClick={() => setTab("countries")}><ArrowRight size={15} /></button></div><div className="status-line"><span>Economic strength</span><b>{country.economy}</b></div><MiniBars value={78} /><div className="status-line"><span>Military capability</span><b>{country.military}</b></div><MiniBars value={72} color="purple" /><div className="status-line"><span>Domestic stability</span><b>{country.stability}/100</b></div><MiniBars value={country.stability} color="green" /><div className="status-divider" /><div className="status-line"><span>Population</span><b>{country.population}</b></div><div className="status-line"><span>GDP (approx.)</span><b>{country.gdp}</b></div></section>
+                <section className="panel status-panel">
+                  <div className="panel-heading">
+                    <div><h2>National status</h2><p>{country.flag} {country.name}</p></div>
+                    <button className="icon-button" onClick={() => setTab("countries")}><ArrowRight size={15} /></button>
+                  </div>
+                  <div className="status-line"><span>GDP (latest available)</span><b>{countryIndicators.loading ? "Loading…" : countryIndicators.gdp ? `${formatGDP(countryIndicators.gdp.value)} · ${countryIndicators.gdp.year}` : "Not reported"}</b></div>
+                  <div className="status-line"><span>Military spending</span><b>{countryIndicators.loading ? "Loading…" : countryIndicators.militarySpending ? `${Number(countryIndicators.militarySpending.value).toFixed(2)}% of GDP · ${countryIndicators.militarySpending.year}` : "Not reported"}</b></div>
+                  <div className="status-line"><span>Domestic stability</span><b>{country.stability}/100 <small>(simulation score)</small></b></div>
+                  <MiniBars value={country.stability} color="green" />
+                  <div className="status-divider" />
+                  <div className="status-line"><span>Population</span><b>{country.populationValue != null ? formatCompactNumber(country.populationValue) : (country.population || "Not available")}</b></div>
+                  <div className="status-line"><span>Capital</span><b>{country.capital || "Not available"}</b></div>
+                  <div className="status-line"><span>Region</span><b>{country.subregion || country.region || "Not available"}</b></div>
+                  <p className="panel-note">GDP and military spending use the latest available World Bank observations. Missing values mean no data was reported for this country or territory.</p>
+                </section>
                 <section className="panel event-panel"><div className="panel-heading"><div><h2>Diplomatic timeline</h2><p>Recent developments</p></div><button className="text-link" onClick={() => setTab("events")}>All events <ArrowRight size={14} /></button></div><div className="event-list">{events.slice(0, 3).map((e, i) => <div className="event-row" key={`${e.title}-${i}`}><span className={`event-icon ${e.type}`}>{e.type === "alert" ? <AlertTriangle size={15} /> : e.type === "deal" ? <Handshake size={15} /> : <Globe2 size={15} />}</span><div><b>{e.title}</b><p>{e.detail}</p><small>{e.time}</small></div></div>)}</div></section>
-                <section className="panel actions-panel"><div className="panel-heading"><div><h2>Available diplomatic actions</h2><p>Choose a direction for your next move.</p></div></div><div className="action-grid">
-                  <button className="diplomatic-action" onClick={() => setModal("sanctions")}><span className="action-symbol red"><Crosshair /></span><b>Propose sanctions</b><small>Apply economic or diplomatic pressure.</small><span className="action-cta">Configure action <ArrowRight size={14} /></span></button>
-                  <button className="diplomatic-action" onClick={() => setModal("alliance")}><span className="action-symbol purple"><Handshake /></span><b>Form alliance</b><small>Build relationships and cooperation.</small><span className="action-cta">Explore partnership <ArrowRight size={14} /></span></button>
-                  <button className="diplomatic-action" onClick={() => setModal("aid")}><span className="action-symbol green"><HeartHandshake /></span><b>Send aid</b><small>Offer humanitarian or economic support.</small><span className="action-cta">Prepare assistance <ArrowRight size={14} /></span></button>
-                  <button className="diplomatic-action" onClick={() => setModal("negotiation")}><span className="action-symbol blue"><MessageSquare /></span><b>Open negotiations</b><small>Seek a diplomatic solution.</small><span className="action-cta">Start dialogue <ArrowRight size={14} /></span></button>
-                </div></section>
+
               </div>
+              <DashboardInteractions
+                countryName={country.name}
+                onSubmitAction={handleDashboardAction}
+              />
             </>}
 
             {tab === "map" && <section className="panel full-map-panel"><div className="panel-heading"><div><h2>World map</h2><p>Hover or select a highlighted country.</p></div></div><WorldMap
@@ -634,7 +801,58 @@ export default function App() {
         </div>
       )}
 
-      {screen === "result" && <main className="result-screen"><div className="result-card"><div className="result-check"><Check size={28} /></div><span className="eyebrow">ACTION RECORDED / PRACTICE MODE</span><h1>{actionResult?.title || "Action recorded"}</h1><p>{actionResult?.description}</p><div className="result-impact"><div><span>TARGET</span><b>{countryList.find((c) => c.name === actionResult?.target)?.flag} {actionResult?.target}</b></div><div><span>ACTION TYPE</span><b>{actionResult?.reason}</b></div><div><span>SIMULATION TURN</span><b>{String(turn).padStart(2, "0")}</b></div></div><div className="notice-box"><AlertTriangle size={17} /><p>This is a frontend demonstration. It does not apply real sanctions or change real-world events.</p></div><div className="result-actions"><button className="button button-secondary" onClick={() => { setScreen("game"); setTab("dashboard"); }}>Return to dashboard</button><button className="button" onClick={() => { setScreen("game"); setTab("map"); }}>View world map <ArrowRight size={16} /></button></div></div></main>}
+      {screen === "result" && (
+        <main className="result-screen">
+          <div className="result-card">
+            <div className="result-check"><Check size={28} /></div>
+            <span className="eyebrow">DIPLOMATIC ACTION / PRACTICE MODE</span>
+            <h1>{actionResult?.title || "Action recorded"}</h1>
+            <p>{actionResult?.description || "Your diplomatic action has been recorded in the practice simulation."}</p>
+
+            <div className="result-impact">
+              <div>
+                <span>INITIATING COUNTRY</span>
+                <b>{countryList.find((c) => c.name === actionResult?.initiator)?.flag || country.flag} {actionResult?.initiator || country.name}</b>
+              </div>
+              <div>
+                <span>TARGET COUNTRY</span>
+                <b>{countryList.find((c) => c.name === actionResult?.target)?.flag || "🌐"} {actionResult?.target || "Not specified"}</b>
+              </div>
+              <div>
+                <span>SIMULATION TURN</span>
+                <b>{String(actionResult?.turn || turn).padStart(2, "0")}</b>
+              </div>
+            </div>
+
+            {actionResult?.details && (
+              <section className="result-next-step">
+                <span className="eyebrow">PROPOSAL DETAILS</span>
+                <p>{actionResult.details}</p>
+              </section>
+            )}
+
+            <section className="result-next-step">
+              <span className="eyebrow">CURRENT STATUS</span>
+              <h3>{actionResult?.status || "Recorded"}</h3>
+              <p>{actionResult?.nextStep || "Review the action and decide on your next diplomatic move."}</p>
+            </section>
+
+            <div className="notice-box">
+              <AlertTriangle size={17} />
+              <p>This is a practice simulation. Proposals are recorded for demonstration and do not change real-world events.</p>
+            </div>
+
+            <div className="result-actions">
+              <button className="button button-secondary" onClick={() => { setScreen("game"); setTab("dashboard"); }}>
+                Return to dashboard
+              </button>
+              <button className="button" onClick={() => { setScreen("game"); setTab("map"); }}>
+                View world map <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        </main>
+      )}
 
       {showAdvisor && screen === "game" && (
         <aside className="advisor-drawer">

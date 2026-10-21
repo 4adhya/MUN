@@ -1,3 +1,4 @@
+
 /* POLITICA — explicit redesign overrides. Import this AFTER App.css. */
 .select-screen {
   max-width: 1600px !important;
@@ -74,8 +75,13 @@
   border-color: #5a8fc4 !important;
   box-shadow: 0 0 0 3px #4e8bc21c !important;
 }
-.select-screen .search-box input { font-size: 13px !important; color: #f0f4f9 !important; }
-.select-screen .search-box input::placeholder { color: #71849b !important; }
+.select-screen .search-box input {
+  font-size: 13px !important;
+  color: #f0f4f9 !important;
+}
+.select-screen .search-box input::placeholder {
+  color: #71849b !important;
+}
 .select-screen .country-list {
   gap: 5px !important;
   margin-top: 16px !important;
@@ -101,11 +107,28 @@
   background: #11253a !important;
   border-color: #3977ad !important;
 }
-.select-screen .country-option .flag { font-size: 21px !important; width: 27px !important; }
-.select-screen .country-option-copy b { font-size: 13px !important; font-weight: 600 !important; color: #e7edf5 !important; }
-.select-screen .country-option-copy small { font-size: 11px !important; color: #8294a9 !important; margin-top: 4px !important; }
-.select-screen .country-status { font-size: 10px !important; color: #93a3b6 !important; }
-.select-screen .country-status i { width: 6px !important; height: 6px !important; }
+.select-screen .country-option .flag {
+  font-size: 21px !important;
+  width: 27px !important;
+}
+.select-screen .country-option-copy b {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #e7edf5 !important;
+}
+.select-screen .country-option-copy small {
+  font-size: 11px !important;
+  color: #8294a9 !important;
+  margin-top: 4px !important;
+}
+.select-screen .country-status {
+  font-size: 10px !important;
+  color: #93a3b6 !important;
+}
+.select-screen .country-status i {
+  width: 6px !important;
+  height: 6px !important;
+}
 .select-screen .map-selection .world-graphic,
 .select-screen .map-selection > div:not(.panel-heading):not(.selected-country-card) {
   border-radius: 5px !important;
@@ -126,10 +149,24 @@
   background: #0d1a29 !important;
   gap: 15px !important;
 }
-.select-screen .selected-country-card .flag-large { font-size: 31px !important; width: 42px !important; }
-.select-screen .selected-country-card small { color: #8ba7c5 !important; font-size: 9px !important; letter-spacing: 1.6px !important; }
-.select-screen .selected-country-card h3 { color: #f0f4fa !important; font-size: 18px !important; margin: 5px 0 !important; }
-.select-screen .selected-country-card p { color: #91a2b7 !important; font-size: 11px !important; }
+.select-screen .selected-country-card .flag-large {
+  font-size: 31px !important;
+  width: 42px !important;
+}
+.select-screen .selected-country-card small {
+  color: #8ba7c5 !important;
+  font-size: 9px !important;
+  letter-spacing: 1.6px !important;
+}
+.select-screen .selected-country-card h3 {
+  color: #f0f4fa !important;
+  font-size: 18px !important;
+  margin: 5px 0 !important;
+}
+.select-screen .selected-country-card p {
+  color: #91a2b7 !important;
+  font-size: 11px !important;
+}
 .select-screen .selected-country-card .button {
   background: #176bc0 !important;
   border: 1px solid #3986d6 !important;
@@ -137,20 +174,132 @@
   box-shadow: none !important;
   min-height: 42px !important;
 }
-.select-screen .selected-country-card .button:hover { background: #227ed8 !important; }
-.select-screen .picker-footer,
-.select-screen .page-footnote { color: #71849a !important; font-size: 10px !important; }
-.select-screen .page-footnote { border-top: 1px solid #223347 !important; padding-top: 17px !important; }
-@media (max-width: 1000px) {
-  .select-screen .selection-layout { grid-template-columns: 1fr !important; }
-  .select-screen .country-list { max-height: 420px !important; }
+.select-screen .selected-country-card .button:hover {
+  background: #227ed8 !important;
 }
+.select-screen .picker-footer,
+.select-screen .page-footnote {
+  color: #71849a !important;
+  font-size: 10px !important;
+}
+.select-screen .page-footnote {
+  border-top: 1px solid #223347 !important;
+  padding-top: 17px !important;
+}
+
+@media (max-width: 1000px) {
+  .select-screen .selection-layout {
+    grid-template-columns: 1fr !important;
+  }
+  .select-screen .country-list {
+    max-height: 420px !important;
+  }
+}
+
 @media (max-width: 620px) {
-  .select-screen { padding: 30px 16px 24px !important; }
-  .select-screen .page-heading { align-items: flex-start !important; gap: 12px !important; }
-  .select-screen .page-heading h1 { font-size: 34px !important; }
-  .select-screen .panel { padding: 16px !important; }
-  .select-screen .selected-country-card { flex-wrap: wrap !important; }
-  .select-screen .selected-country-card .button { width: 100% !important; }
-  .select-screen .country-status { display: none !important; }
+  .select-screen {
+    padding: 30px 16px 24px !important;
+  }
+  .select-screen .page-heading {
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .select-screen .page-heading h1 {
+    font-size: 34px !important;
+  }
+  .select-screen .panel {
+    padding: 16px !important;
+  }
+  .select-screen .selected-country-card {
+    flex-wrap: wrap !important;
+  }
+  .select-screen .selected-country-card .button {
+    width: 100% !important;
+  }
+  .select-screen .country-status {
+    display: none !important;
+  }
+}
+
+/* =========================================
+   POLITICA — DIPLOMATIC RESULT PAGE ADDITIONS
+   New styles only; original styles preserved.
+   ========================================= */
+
+.result-next-step {
+  margin: 26px 0;
+  padding: 24px;
+  text-align: left;
+  background: rgba(15, 38, 59, 0.72);
+  border: 1px solid #23445e;
+  border-radius: 14px;
+}
+
+.result-next-step .eyebrow {
+  color: #65c5f5;
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.result-next-step h3 {
+  margin: 12px 0 8px;
+  color: #62d9b0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.result-next-step p {
+  margin: 0;
+  color: #a8bbcf;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.result-impact > div {
+  min-width: 0;
+}
+
+.result-impact > div span {
+  display: block;
+  margin-bottom: 12px;
+  color: #819ab5;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+}
+
+.result-impact > div b {
+  display: block;
+  color: #e5eefb;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.result-card > p {
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+
+@media (max-width: 700px) {
+  .result-next-step {
+    margin: 20px 0;
+    padding: 18px;
+  }
+
+  .result-impact {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+
+  .result-impact > div {
+    padding: 18px !important;
+  }
+
+  .result-actions {
+    flex-direction: column;
+  }
+
+  .result-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
 }
