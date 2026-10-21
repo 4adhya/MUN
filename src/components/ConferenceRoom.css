@@ -1,3 +1,4 @@
+
 .conference-page {
   width: min(1500px, 100%);
   margin: 0 auto;
@@ -1056,7 +1057,7 @@
 .cr-status-strip strong { display:block; overflow:hidden; color:#e6f4ff; font-size:12px; font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
 .cr-status-strip .cr-tension-high { color:#ff8492; }
 
-.cr-chamber-scene { position:relative; isolation:isolate; min-height:510px; overflow:hidden; border:1px solid rgba(54,126,171,.45); border-radius:12px; background-color:#091a2a; background-image:linear-gradient(90deg,rgba(3,13,25,.5),rgba(3,12,22,.12) 44%,rgba(2,12,22,.55)),linear-gradient(0deg,rgba(1,10,18,.82),transparent 44%,rgba(2,12,22,.28)),url("/politica-conference-hall.png"); background-size:cover; background-position:center 52%; box-shadow:0 18px 55px rgba(0,0,0,.28); }
+.cr-chamber-scene { position:relative; isolation:isolate; min-height:510px; overflow:hidden; border:1px solid rgba(54,126,171,.45); border-radius:12px; background-color:#091a2a; background-image:linear-gradient(90deg,rgba(3,13,25,.5),rgba(3,12,22,.12) 44%,rgba(2,12,22,.55)),linear-gradient(0deg,rgba(1,10,18,.82),transparent 44%,rgba(2,12,22,.28)),url("/politica-conference-hall%20copy.png"); background-size:cover; background-position:center 52%; box-shadow:0 18px 55px rgba(0,0,0,.28); }
 .cr-chamber-scene::before { position:absolute; z-index:-1; inset:0; border-radius:inherit; background:linear-gradient(180deg,rgba(5,18,32,.16),transparent 44%,rgba(1,9,17,.52)); content:""; }
 .cr-scene-overlay { position:absolute; inset:0; z-index:0; pointer-events:none; background:linear-gradient(90deg,rgba(2,13,24,.18),transparent 45%,rgba(1,9,17,.28)); }
 .cr-photo-credit { position:absolute; z-index:3; bottom:5px; left:9px; color:#b5c8d6b8; font-size:7px; text-shadow:0 1px 5px #000; }
@@ -1187,7 +1188,7 @@
 .cr-thinking-message, .cr-last-decision { display:flex; align-items:flex-start; gap:10px; margin-top:12px; padding:11px; border:1px solid #25445e; border-radius:7px; background:#0a2238; color:#c4d9eb; }
 .cr-thinking-message > svg, .cr-last-decision > svg { flex-shrink:0; color:#67caff; }.cr-last-decision > svg { color:#48dfb1; }
 .cr-thinking-message strong, .cr-last-decision strong { font-size:10px; }.cr-thinking-message p, .cr-last-decision p { margin:4px 0 0; color:#97b0c6; font-size:9px; line-height:1.6; }
-.cr-toast { position:fixed; z-index:1000; right:24px; bottom:80px; display:flex; align-items:center; gap:8px; max-width:min(420px,calc(100vw - 32px)); padding:12px 15px; border:1px solid #277d9d; border-radius:9px; background:rgba(4,24,39,.97); box-shadow:0 15px 45px #0008; color:#e5faff; font-size:11px; animation:crToastIn .25s ease-out both; }
+.cr-toast { position:fixed; z-index:1000; right:24px; bottom:24px; display:flex; align-items:center; gap:8px; max-width:min(420px,calc(100vw - 32px)); padding:12px 15px; border:1px solid #277d9d; border-radius:9px; background:rgba(4,24,39,.97); box-shadow:0 15px 45px #0008; color:#e5faff; font-size:11px; animation:crToastIn .25s ease-out both; }
 .cr-toast svg { flex-shrink:0; color:#5ce0b6; }
 .cr-modal-backdrop { position:fixed; z-index:999; inset:0; display:grid; place-items:center; padding:20px; background:rgba(0,7,15,.75); backdrop-filter:blur(8px); }
 .cr-action-modal { width:min(460px,100%); padding:22px; border:1px solid #2c6b90; border-radius:13px; background:linear-gradient(145deg,#0c2339,#061523); box-shadow:0 22px 80px #0009; }
@@ -1285,7 +1286,7 @@
   background-image:
     linear-gradient(90deg, rgba(2, 13, 24, 0.20) 0%, rgba(2, 13, 24, 0.02) 36%, rgba(2, 13, 24, 0.10) 68%, rgba(2, 13, 24, 0.42) 100%),
     linear-gradient(0deg, rgba(1, 9, 17, 0.66) 0%, rgba(1, 9, 17, 0.02) 32%, rgba(1, 9, 17, 0.10) 100%),
-    url("/politica-conference-hall.png");
+    url("/politica-conference-hall%20copy.png");
   background-size: cover;
   background-position: center 51%;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
@@ -1496,8 +1497,3 @@
 
   .cr-action-button { min-height: 76px; }
 }
-
-/* The report dialog and its floating button live on <body> (see ConferenceRoom.jsx), outside .cr-photo-page. */
-.rpt-portal, .rpt-portal * { box-sizing: border-box; }
-.rpt-portal { color: #eef7ff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-.rpt-portal button { font: inherit; cursor: pointer; }
