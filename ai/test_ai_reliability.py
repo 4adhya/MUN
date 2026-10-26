@@ -381,3 +381,11 @@ def test_attempt_cap_is_configurable_but_never_below_the_gemini_minimum(monkeypa
 
 def test_the_sdk_client_is_reused_between_calls():
     assert gemini_client._build_client(FAKE_KEY) is gemini_client._build_client(FAKE_KEY)
+
+    
+
+def test_retry_after_a_server_error_goes_without_the_thinking_level(monkeypatch, sleeps, fresh_thinking):
+    fake = install(monkeypatch, ScriptedClient([server_error(500), ok_reply()]))
+    assert call() == ok_reply()
+    assert fake.calls[0]["config"].thinking_config is not None and fake.calls[1]["config"].thinking_config is None
+    

@@ -170,7 +170,7 @@ def _thinking_config(model: Optional[str]):
 
 
 def _build_config(system_instruction: str, timeout_ms: Optional[int] = None, json_mode: bool = True,
-                  model: Optional[str] = None):
+                  model: Optional[str] = None, use_thinking: bool = True):
     from google.genai import types
 
     http_options = types.HttpOptions(timeout=timeout_ms) if timeout_ms else None  # per-request timeout override
@@ -179,7 +179,7 @@ def _build_config(system_instruction: str, timeout_ms: Optional[int] = None, jso
         response_mime_type=JSON_MIME_TYPE if json_mode else None,  # None: plain-text reply (advisor chat)
         temperature=0.5,
         max_output_tokens=2048,  # was 400: Gemma hit MAX_TOKENS before finishing the JSON,
-        thinking_config=_thinking_config(model),  # thinking off for Gemma 4: it was the main source of delay
+        thinking_config=_thinking_config(model) if use_thinking else None,  # thinking off for Gemma 4: it was the main source of delay
         http_options=http_options,
     )
 
@@ -345,6 +345,7 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
     started = _now()
     attempt = 0
     last_error: Optional[GeminiRequestError] = None
+    drop_thinking = False  # set after a failed attempt that carried a thinking level: later attempts go without it
 
     for model, allowed in plan:
         if last_error is not None and not last_error.retryable:
@@ -387,7 +388,7 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
                 # >= 10 s: guaranteed by the check above. Capped per attempt so one stuck call cannot eat the budget.
                 timeout_ms = int(min(TIMEOUT_MS, remaining * 1000, _attempt_cap_seconds() * 1000))
                 try:
-                    config = _build_config(system_instruction, timeout_ms, json_mode, model)
+                    config = _build_config(system_instruction, timeout_ms, json_mode, model, not drop_thinking)
                     try:
                         response = client.models.generate_content(model=model, contents=prompt, config=config)
                     except Exception as exc:
@@ -409,6 +410,8 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
                     raise _classify_attempt(exc, key, model) from None
             except GeminiRequestError as err:
                 last_error = err
+                if err.retryable and not drop_thinking and _thinking_config(model) is not None:
+                    drop_thinking = True  # a 5xx/timeout may be caused by the thinking setting: retry without it
                 elapsed_ms = int((_now() - attempt_started) * 1000)
                 logger.warning(
                     "gemini call failed country=%s model=%s attempt=%d http_status=%s error_type=%s reason=%s "
