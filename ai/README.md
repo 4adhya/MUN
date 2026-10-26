@@ -57,3 +57,22 @@ All Gemini replies in the tests are mocks. `ai/test_country_agent_live.py` calls
 - n8n orchestration comes later.
 - No autonomous loops, no turn advancement, no database.
 - This is not multi-agent functionality.
+
+## Speed and the "HTTP 504 Deadline expired" error
+
+The AI advisor must answer in a few seconds. What makes it fast (all in `ai/gemini_client.py`):
+
+- **Gemma 4 thinking is switched off** (`thinking_level="minimal"`). Thinking can take tens of seconds, and the
+  server deadline we send (`x-server-timeout`) then expires: that is the "504 Deadline expired" message.
+  Needs `google-genai>=1.51` (`pip install -U -r ai/requirements.txt`). If the API ever refuses the setting, the call is
+  repeated once without it automatically.
+- **Each attempt is capped** at 25 s so a stuck request leaves time for a retry.
+- The SDK client is reused between calls.
+
+Optional `.env` settings:
+
+```
+GEMINI_FALLBACK_MODEL=gemma-4-31b-it   # a second Gemma model, tried once if the primary keeps failing
+GEMINI_ATTEMPT_TIMEOUT_SECONDS=25      # per-attempt cap (minimum 10)
+GEMINI_THINKING_LEVEL=minimal          # "high" turns thinking back on; "default" sends nothing
+```

@@ -1,5 +1,5 @@
 # Gemini access for the AI layer (Person 3). Official Google GenAI SDK.
-google-genai>=1.0,<3
+google-genai>=1.51,<3  # >=1.51: ThinkingConfig.thinking_level (turns Gemma 4 thinking off)
 
 # Agent response validation (same Pydantic major version as the backend)
 pydantic>=2.6

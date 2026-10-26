@@ -160,6 +160,7 @@ const RESPONSE_OPTIONS = [
 
 export default function ConferenceRoom({ country, onExit, onAdvisor }) {
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiElapsed, setAiElapsed] = useState(0);
   const [aiProposal, setAiProposal] = useState(null);
   const [aiError, setAiError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
@@ -266,9 +267,17 @@ const toCountryId = (name) =>
 
 const requestAIProposal = async () => {
   setAiLoading(true);
+  setAiElapsed(0);
   setAiError("");
   setAiProposal(null);
   setActionMessage("");
+
+  // Live seconds counter so a slow answer never looks like a frozen button.
+  const startedAt = Date.now();
+  const elapsedTimer = setInterval(
+    () => setAiElapsed(Math.floor((Date.now() - startedAt) / 1000)),
+    1000
+  );
 
   try {
     const situation = [
@@ -298,6 +307,7 @@ setAiProposal(result);
       error.message || "Unable to obtain an AI proposal."
     );
   } finally {
+    clearInterval(elapsedTimer);
     setAiLoading(false);
   }
 };
@@ -630,7 +640,7 @@ const approveAIProposal = async () => {
       <section className="cr-support-grid">
         <article className="cr-support-panel cr-ai-panel">
           <div className="cr-support-title"><div><span className="cr-eyebrow">AI DIPLOMATIC ADVISOR</span><h2>Strategic recommendation</h2><p>Generate an AI proposal using the current scenario and your delegation.</p></div><span className={`cr-ai-status ${aiLoading ? "working" : ""}`}>{aiLoading ? "ANALYZING" : "READY"}</span></div>
-          <button className="cr-primary-button" onClick={requestAIProposal} disabled={aiLoading || actionLoading}><Bot size={16} /> {aiLoading ? "Waiting for AI…" : aiError ? "Retry AI proposal" : "Generate AI proposal"} <ArrowRight size={15} /></button>
+          <button className="cr-primary-button" onClick={requestAIProposal} disabled={aiLoading || actionLoading}><Bot size={16} /> {aiLoading ? `Waiting for AI… ${aiElapsed}s` : aiError ? "Retry AI proposal" : "Generate AI proposal"} <ArrowRight size={15} /></button>
           {aiError && <p className="cr-inline-error" role="alert">{aiError}</p>}
           {aiProposal && (
             <div className="cr-ai-result">

@@ -315,3 +315,69 @@ def test_agent_labels_log_lines_with_its_country(monkeypatch, sleeps, caplog):
     with caplog.at_level(logging.INFO, logger="mun.ai.gemini"):
         result = CountryAgent(COUNTRY_PROFILES["japan"]).propose("Trade dispute.", Simulation().world)
     assert result.ok and "country=Japan" in caplog.text
+    
+
+# --- speed: thinking off, per-attempt cap, client reuse -------------------------------------------------------
+@pytest.fixture
+def fresh_thinking(monkeypatch):
+    monkeypatch.setattr(gemini_client, "_thinking_rejected", set())
+    monkeypatch.delenv("GEMINI_THINKING_LEVEL", raising=False)
+    monkeypatch.delenv("GEMINI_ATTEMPT_TIMEOUT_SECONDS", raising=False)
+
+
+def test_gemma4_calls_ask_for_minimal_thinking(monkeypatch, sleeps, fresh_thinking):
+    fake = install(monkeypatch, ScriptedClient([ok_reply()]))
+    call()
+    thinking = fake.calls[0]["config"].thinking_config
+    assert thinking is not None and str(thinking.thinking_level).lower().endswith("minimal")
+
+
+def test_thinking_level_can_be_overridden_or_switched_off(monkeypatch, sleeps, fresh_thinking):
+    monkeypatch.setenv("GEMINI_THINKING_LEVEL", "default")
+    fake = install(monkeypatch, ScriptedClient([ok_reply()]))
+    call()
+    assert fake.calls[0]["config"].thinking_config is None
+
+
+def test_thinking_level_is_not_sent_to_other_models(fresh_thinking):
+    assert gemini_client._thinking_config("gemma-3-27b-it") is None
+    assert gemini_client._thinking_config(None) is None
+
+
+def test_rejected_thinking_level_is_retried_once_without_it_and_remembered(monkeypatch, sleeps, fresh_thinking):
+    rejection = errors.ClientError(
+        400, {"error": {"code": 400, "message": "Thinking level is not supported for this model.", "status": "INVALID_ARGUMENT"}}
+    )
+    fake = install(monkeypatch, ScriptedClient([rejection, ok_reply(), ok_reply()]))
+    assert call() == ok_reply()
+    assert len(fake.calls) == 2 and sleeps == []  # repeated at once: no backoff, and not counted as a retry
+    assert fake.calls[0]["config"].thinking_config is not None and fake.calls[1]["config"].thinking_config is None
+    call()  # later calls do not send it again
+    assert fake.calls[2]["config"].thinking_config is None
+
+
+def test_unrelated_400_is_not_mistaken_for_a_thinking_rejection(monkeypatch, sleeps, fresh_thinking):
+    fake = install(monkeypatch, ScriptedClient([client_error(400), ok_reply()]))
+    with pytest.raises(CheckError):
+        call()
+    assert len(fake.calls) == 1
+
+
+def test_one_attempt_never_gets_the_whole_budget(monkeypatch, sleeps, fresh_thinking):
+    fake = install(monkeypatch, ScriptedClient([ok_reply()]))
+    call()
+    assert fake.calls[0]["config"].http_options.timeout == int(gemini_client.ATTEMPT_TIMEOUT_SECONDS * 1000)
+    assert gemini_client.ATTEMPT_TIMEOUT_SECONDS < gemini_client.TOTAL_BUDGET_SECONDS / 2 + 5
+
+
+def test_attempt_cap_is_configurable_but_never_below_the_gemini_minimum(monkeypatch, fresh_thinking):
+    monkeypatch.setenv("GEMINI_ATTEMPT_TIMEOUT_SECONDS", "40")
+    assert gemini_client._attempt_cap_seconds() == 40
+    monkeypatch.setenv("GEMINI_ATTEMPT_TIMEOUT_SECONDS", "2")
+    assert gemini_client._attempt_cap_seconds() == gemini_client.MIN_ATTEMPT_SECONDS
+    monkeypatch.setenv("GEMINI_ATTEMPT_TIMEOUT_SECONDS", "junk")
+    assert gemini_client._attempt_cap_seconds() == gemini_client.ATTEMPT_TIMEOUT_SECONDS
+
+
+def test_the_sdk_client_is_reused_between_calls():
+    assert gemini_client._build_client(FAKE_KEY) is gemini_client._build_client(FAKE_KEY)

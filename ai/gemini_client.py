@@ -24,6 +24,17 @@ Reliability policy (all values are constants below, nothing is retried forever):
       model is configured by default and none is invented.
     * At most GEMINI_MAX_CONCURRENCY (default 6) Gemini requests are in flight at the same time in this
       process, so several country agents asked at once queue up instead of hammering the API.
+
+Speed policy (why the AI advisor used to be slow and end in "HTTP 504 Deadline expired"):
+
+    * Gemma 4 can spend most of a request "thinking" before it writes a ~60-token JSON decision. These agents
+      only need a quick structured pick, so every Gemma 4 call asks for thinking_level="minimal" (thinking off).
+      If the API/SDK rejects that setting, the model is remembered and the call is repeated once without it.
+      Override with GEMINI_THINKING_LEVEL (e.g. "high"), or set it to "default" to send nothing.
+    * Each attempt is capped at ATTEMPT_TIMEOUT_SECONDS (default 25, env GEMINI_ATTEMPT_TIMEOUT_SECONDS) instead of
+      being allowed to burn the whole budget. A hung/overloaded request is abandoned early, so the retry (or the
+      fallback model) still has time to answer inside the budget.
+    * The SDK client is created once and reused (no new TLS connection per call).
 """
 from __future__ import annotations
 
@@ -62,6 +73,10 @@ MAX_DELAY_SECONDS = 8.0
 TOTAL_BUDGET_SECONDS = 55.0  # whole call; the frontend gives up at 60 s
 MIN_ATTEMPT_SECONDS = 10.0  # the Gemini API rejects any request deadline under 10 s (HTTP 400), so never start an
 #                            attempt with less than this left in the budget
+ATTEMPT_TIMEOUT_SECONDS = 25.0  # one attempt never waits longer than this, so a stuck call leaves time for a retry
+ATTEMPT_TIMEOUT_ENV = "GEMINI_ATTEMPT_TIMEOUT_SECONDS"
+THINKING_LEVEL_ENV = "GEMINI_THINKING_LEVEL"
+DEFAULT_THINKING_LEVEL = "minimal"  # Gemma 4: "minimal" = thinking off, "high" = thinking on (low/medium are rejected)
 DEFAULT_MAX_CONCURRENT_CALLS = 6  # the council asks up to ~8 agents at once; a tight cap queues the last ones past the 60 s UI timeout
 RETRYABLE_HTTP_STATUSES = frozenset({500, 502, 503, 504})
 FALLBACK_MODEL_ENV = "GEMINI_FALLBACK_MODEL"
@@ -109,14 +124,53 @@ class GeminiRequestError(CheckError):
 
 
 # --- SDK objects ----------------------------------------------------------------------------------
+_clients: dict = {}
+_clients_lock = threading.Lock()
+_thinking_rejected: set = set()  # models whose API refused a thinking level: we stop sending it to them
+
+
 def _build_client(key: str):
+    """One SDK client per API key, reused for every call (a new client per call re-did the TLS handshake)."""
     from google import genai
     from google.genai import types
 
-    return genai.Client(api_key=key, http_options=types.HttpOptions(timeout=TIMEOUT_MS))
+    with _clients_lock:
+        client = _clients.get(key)
+        if client is None:
+            client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=TIMEOUT_MS))
+            _clients[key] = client
+        return client
 
 
-def _build_config(system_instruction: str, timeout_ms: Optional[int] = None, json_mode: bool = True):
+def _attempt_cap_seconds() -> float:
+    raw = os.environ.get(ATTEMPT_TIMEOUT_ENV, "").strip()
+    try:
+        value = float(raw) if raw else ATTEMPT_TIMEOUT_SECONDS
+    except ValueError:
+        value = ATTEMPT_TIMEOUT_SECONDS
+    return max(MIN_ATTEMPT_SECONDS, value)  # Gemini rejects deadlines under 10 s
+
+
+def _thinking_config(model: Optional[str]):
+    """ThinkingConfig for a Gemma 4 call, or None to send nothing (other models, opted out, or already rejected)."""
+    if not model or not model.lower().startswith("gemma-4") or model in _thinking_rejected:
+        return None
+    level = (os.environ.get(THINKING_LEVEL_ENV, "").strip() or DEFAULT_THINKING_LEVEL).lower()
+    if level in ("default", "none", "off"):
+        return None
+    from google.genai import types
+
+    if "thinking_level" not in types.ThinkingConfig.model_fields:  # older google-genai: upgrade to use this
+        return None
+    try:
+        return types.ThinkingConfig(thinking_level=level)
+    except Exception:  # unknown level name: send nothing rather than fail the call
+        logger.warning("Ignoring %s=%r (not a valid thinking level)", THINKING_LEVEL_ENV, level)
+        return None
+
+
+def _build_config(system_instruction: str, timeout_ms: Optional[int] = None, json_mode: bool = True,
+                  model: Optional[str] = None):
     from google.genai import types
 
     http_options = types.HttpOptions(timeout=timeout_ms) if timeout_ms else None  # per-request timeout override
@@ -125,7 +179,20 @@ def _build_config(system_instruction: str, timeout_ms: Optional[int] = None, jso
         response_mime_type=JSON_MIME_TYPE if json_mode else None,  # None: plain-text reply (advisor chat)
         temperature=0.5,
         max_output_tokens=2048,  # was 400: Gemma hit MAX_TOKENS before finishing the JSON,
+        thinking_config=_thinking_config(model),  # thinking off for Gemma 4: it was the main source of delay
         http_options=http_options,
+    )
+
+
+def _is_thinking_rejection(exc: Exception, model: str) -> bool:
+    """True if the API refused the thinking setting we sent (HTTP 400 mentioning thinking)."""
+    from google.genai import errors
+
+    return (
+        isinstance(exc, errors.ClientError)
+        and getattr(exc, "code", None) == 400
+        and "thinking" in str(exc).lower()
+        and _thinking_config(model) is not None
     )
 
 
@@ -317,10 +384,20 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
                         error_type="QueueTimeout",
                     )
                     break
-                timeout_ms = int(min(TIMEOUT_MS, remaining * 1000))  # >= 10 s: guaranteed by the check above
+                # >= 10 s: guaranteed by the check above. Capped per attempt so one stuck call cannot eat the budget.
+                timeout_ms = int(min(TIMEOUT_MS, remaining * 1000, _attempt_cap_seconds() * 1000))
                 try:
-                    config = _build_config(system_instruction, timeout_ms, json_mode)
-                    response = client.models.generate_content(model=model, contents=prompt, config=config)
+                    config = _build_config(system_instruction, timeout_ms, json_mode, model)
+                    try:
+                        response = client.models.generate_content(model=model, contents=prompt, config=config)
+                    except Exception as exc:
+                        if not _is_thinking_rejection(exc, model):
+                            raise
+                        # This model/API refuses the thinking setting: remember that and repeat the call without it.
+                        _thinking_rejected.add(model)
+                        logger.warning("gemini model=%s rejected the thinking level; retrying without it", model)
+                        config = _build_config(system_instruction, timeout_ms, json_mode, model)
+                        response = client.models.generate_content(model=model, contents=prompt, config=config)
                     text = extract_text(response, key)
                 except GeminiRequestError:
                     raise

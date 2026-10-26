@@ -76,7 +76,8 @@ export const getEvents = (limit = 100) =>
 export const getReport = () => request("/simulation/report");
 
 
-export const proposeAI = (countryId, situation, { timeoutMs = 60000 } = {}) =>
+// The backend allows Gemma up to ~55 s in total; wait a bit longer so its real error reaches the UI.
+export const proposeAI = (countryId, situation, { timeoutMs = 70000 } = {}) =>
   request("/ai/propose", {
     method: "POST",
     body: {
@@ -87,7 +88,7 @@ export const proposeAI = (countryId, situation, { timeoutMs = 60000 } = {}) =>
   });
 
 
-export const askAdvisor = (countryId, message, history = [], { timeoutMs = 60000 } = {}) =>
+export const askAdvisor = (countryId, message, history = [], { timeoutMs = 70000 } = {}) =>
   request("/ai/advisor", {
     method: "POST",
     body: { country_id: countryId, message, history },
