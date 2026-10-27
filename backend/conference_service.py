@@ -17,14 +17,22 @@ later AI agents can read) and a `SpeakerState`. The queue is rebuilt by the serv
 phase, so it can never disagree with the authoritative phase. A speech passes through the `check_action` gate like
 any other phase-restricted action, and emits a `speech_submitted` event into the conference's world.
 
-Nothing here handles negotiations, resolutions, voting, crisis, scoring or persistence (later phases).
+Phase 5 adds negotiations between delegates. Every conference record keeps its negotiations (an append-only history
+that later AI agents can read). Proposing and answering both pass the same `check_action(NEGOTIATION)` gate, so they
+work only in the phases `mun.phases` permits (UNMODERATED_CAUCUS and CRISIS). Each important step (proposed, accepted,
+rejected, countered, expired) is recorded as an event in the conference's world. An answer changes the diplomatic
+relationship between the two countries only through the deterministic rules in `negotiation_rules.py`, never from the
+proposal text. A PENDING negotiation expires lazily: whenever the service touches negotiations (and when the phase
+advances) it first expires every one whose time is up or whose phase no longer permits negotiating.
+
+Nothing here handles resolutions, voting, crisis logic, scoring or persistence (later phases).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import RLock
-from typing import Optional
+from typing import Callable, Optional
 
 from pydantic import ValidationError
 
@@ -62,7 +70,17 @@ from .mun import (
     Speech,
     open_floor,
     pass_floor,
+    Negotiation,
+    NegotiationAction,
+    NegotiationStateError,
+    NegotiationStatus,
+    apply_response,
+    default_expiry,
+    expire,
+    expire_reason,
+    is_finalized,
 )
+from .negotiation_rules import apply_negotiation_outcome
 from .report_schemas import SimulationReport
 from .report_service import build_report
 from .rules import ActionError, ConflictError, NotFoundError, validate_world
@@ -71,6 +89,8 @@ from .speech_schemas import SpeakerEntry, SpeakerQueueView
 
 CONFERENCE_START_EVENT = "conference_start"
 SPEECH_EVENT = "speech_submitted"
+NEGOTIATION_PROPOSED_EVENT = "negotiation_proposed"
+NEGOTIATION_EXPIRED_EVENT = "negotiation_expired"
 
 
 class InvalidRequestError(ActionError):
@@ -93,6 +113,7 @@ class ConferenceRecord:
     world: Optional[WorldState] = None
     speeches: list[Speech] = field(default_factory=list)  # append-only history; never cleared by phase changes
     speakers: SpeakerState = field(default_factory=SpeakerState)  # rebuilt on every phase change
+    negotiations: list[Negotiation] = field(default_factory=list)  # append-only history; entries only change status
 
 
 def resolve_seat(identifier: str) -> Country:
@@ -150,9 +171,11 @@ def assign_countries(participants: list[Participant], countries: list[Country]) 
 
 
 class ConferenceService:
-    def __init__(self) -> None:
+    def __init__(self, clock: Optional[Callable[[], datetime]] = None) -> None:
         self._records: dict[str, ConferenceRecord] = {}
         self._lock = RLock()  # FastAPI runs sync routes in a thread pool
+        # The clock negotiations use for creation, answers and expiry (tests replace it to move time).
+        self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
 
     # --- helpers -------------------------------------------------------------------------------
     def _get(self, conference_id: str) -> ConferenceRecord:
@@ -461,6 +484,7 @@ class ConferenceService:
             )
             record.conference = conference
             record.speakers = speakers
+            self._expire_stale_negotiations(record, self._clock())  # offers the new phase no longer permits
             return self._snapshot(record)
 
     def check_action(self, conference_id: str, action: str) -> ActionCheckResponse:
@@ -609,6 +633,271 @@ class ConferenceService:
                 raise ConflictError(str(exc)) from None
             record.speakers = new_state
             return self._speaker_view(record)
+
+    # --- Phase 5: negotiations -----------------------------------------------------------------
+    @staticmethod
+    def _country_by_code(world: WorldState, code: str) -> Optional[Country]:
+        return next((c for c in world.countries if c.country_code == code), None)
+
+    def _expire_stale_negotiations(self, record: ConferenceRecord, now: datetime) -> None:
+        """Expire every PENDING negotiation whose time is up or whose phase no longer permits negotiating.
+
+        Records one `negotiation_expired` event each. Idempotent (an EXPIRED negotiation is final and is never
+        expired twice) and it cannot fail half-way: every event is built before anything is stored.
+        """
+        world = record.world
+        if world is None or not record.negotiations:
+            return
+        phase = record.conference.current_phase
+        changes: list[tuple[int, Negotiation, DiplomacyEvent]] = []
+        for index, negotiation in enumerate(record.negotiations):
+            reason = expire_reason(negotiation, now, phase)
+            if reason is None:
+                continue
+            proposer = self._country_by_code(world, negotiation.proposer)
+            receiver = self._country_by_code(world, negotiation.receiver)
+            proposer_name = proposer.name if proposer else negotiation.proposer
+            receiver_name = receiver.name if receiver else negotiation.receiver
+            event = DiplomacyEvent(
+                id=len(world.events) + len(changes) + 1,
+                turn=world.turn,
+                type=NEGOTIATION_EXPIRED_EVENT,
+                actor=proposer.id if proposer else negotiation.proposer,
+                target=receiver.id if receiver else negotiation.receiver,
+                message=(
+                    f"{proposer_name}'s proposal to {receiver_name} expired unanswered "
+                    f"({'the phase no longer permits negotiation' if reason == 'phase_closed' else 'time ran out'})."
+                ),
+                timestamp=now,
+                effects={
+                    "conference_id": record.conference.id,
+                    "negotiation_id": negotiation.id,
+                    "proposer": negotiation.proposer,
+                    "receiver": negotiation.receiver,
+                    "status": NegotiationStatus.EXPIRED.value,
+                    "reason": reason,
+                    "phase": phase.value,
+                    "relationship_changed": False,
+                },
+            )
+            changes.append((index, expire(negotiation), event))
+        for index, expired, event in changes:  # nothing above can fail: commit together
+            record.negotiations[index] = expired
+            world.events.append(event)
+
+    def _find_negotiation(self, negotiation_id: str) -> tuple[ConferenceRecord, int]:
+        for record in self._records.values():
+            for index, negotiation in enumerate(record.negotiations):
+                if negotiation.id == negotiation_id:
+                    return record, index
+        raise NotFoundError(f"Negotiation '{negotiation_id}' not found")
+
+    @staticmethod
+    def _member(record: ConferenceRecord, participant_id: str) -> Participant:
+        participant = next((p for p in record.participants if p.id == participant_id), None)
+        if participant is None or participant.conference_id != record.conference.id:
+            raise ForbiddenError(
+                f"Participant '{participant_id}' does not belong to conference '{record.conference.id}'"
+            )
+        return participant
+
+    def propose_negotiation(
+        self, conference_id: str, participant_id: str, receiver: str, proposal: str
+    ) -> Negotiation:
+        """A delegate proposes something to another delegate's country, and a `negotiation_proposed` event is emitted.
+
+        Checked in this order; a rejected request stores nothing and emits nothing:
+          404 unknown conference
+          403 the participant is not in this conference, or is not a PARTICIPANT delegate (GUEST/JURY cannot negotiate)
+          409 the conference is not ACTIVE, or the current phase does not permit NEGOTIATION (the Phase 3 gate)
+          422 the receiver is the proposer's own country, or is not seated with a delegate in this conference
+          422 the proposal itself is invalid (blank, too long)
+        The proposer is always the participant's own country and the phase is always the conference's current phase;
+        clients cannot choose either. The negotiation starts PENDING and expires after NEGOTIATION_TTL_SECONDS.
+        """
+        with self._lock:
+            record = self._get(conference_id)
+            participant = self._member(record, participant_id)
+            if participant.role is not ParticipantRole.PARTICIPANT:
+                raise ForbiddenError(
+                    f"{participant.role.value} participants cannot negotiate; only PARTICIPANT delegates can"
+                )
+
+            now = self._clock()
+            self._expire_stale_negotiations(record, now)
+            self.check_action(conference_id, ActionType.NEGOTIATION.value)  # ACTIVE + the phase permits NEGOTIATION
+
+            world = record.world
+            code = receiver.strip().upper()
+            proposer_country = self._country_by_code(world, participant.country_code) if participant.country_code else None
+            if proposer_country is None:  # a started conference seats every delegate; guard anyway
+                raise ConflictError(f"Participant '{participant.id}' has no country in this conference")
+            if code == participant.country_code:
+                raise InvalidRequestError("A country cannot negotiate with itself")
+            holder = next(
+                (p for p in record.participants if p.role is ParticipantRole.PARTICIPANT and p.country_code == code),
+                None,
+            )
+            receiver_country = self._country_by_code(world, code)
+            if holder is None or receiver_country is None:
+                raise InvalidRequestError(
+                    f"Country {code} is not represented by a delegate in this conference, so it cannot receive proposals"
+                )
+
+            phase = record.conference.current_phase
+            try:
+                negotiation = Negotiation(
+                    conference_id=conference_id,
+                    proposer=participant.country_code,
+                    receiver=code,
+                    proposal=proposal,
+                    created_at=now,
+                    expires_at=default_expiry(now),
+                    proposer_participant_id=participant.id,
+                    receiver_participant_id=holder.id,
+                    phase=phase,
+                )
+            except ValidationError as exc:
+                problems = "; ".join(f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors())
+                raise InvalidRequestError(f"Invalid negotiation: {problems}") from None
+
+            event = DiplomacyEvent(
+                id=len(world.events) + 1,
+                turn=world.turn,
+                type=NEGOTIATION_PROPOSED_EVENT,
+                actor=proposer_country.id,
+                target=receiver_country.id,
+                message=(
+                    f"{proposer_country.name} ({participant.name}) proposed a negotiation to "
+                    f"{receiver_country.name} during {phase.value}."
+                ),
+                timestamp=now,
+                effects={
+                    "conference_id": conference_id,
+                    "negotiation_id": negotiation.id,
+                    "proposer": negotiation.proposer,
+                    "receiver": negotiation.receiver,
+                    "status": NegotiationStatus.PENDING.value,
+                    "phase": phase.value,
+                    "expires_at": negotiation.expires_at.isoformat(),
+                    "characters": len(negotiation.proposal),
+                },
+            )
+
+            record.negotiations.append(negotiation)  # nothing below can fail: both commits happen together
+            world.events.append(event)
+            return negotiation.model_copy(deep=True)
+
+    def respond_negotiation(
+        self,
+        negotiation_id: str,
+        participant_id: str,
+        action: NegotiationAction,
+        counter_offer: Optional[str] = None,
+    ) -> Negotiation:
+        """The receiving delegate accepts, rejects or counters a PENDING negotiation.
+
+        Checked in this order; a rejected request changes nothing (except that stale negotiations are expired first,
+        which is just time having passed):
+          404 unknown negotiation
+          403 the participant is not in the negotiation's conference, or is not the delegate it was addressed to
+              (this includes the proposer answering their own proposal)
+          409 the negotiation is already final (answered, countered or expired)
+          409 the conference is not ACTIVE, or the current phase does not permit NEGOTIATION (the Phase 3 gate)
+          422 COUNTER without a counter-offer, or an ACCEPT/REJECT carrying one
+        ACCEPT / REJECT / COUNTER finalize the negotiation, record an event and move the two countries' (symmetric)
+        relationship by the fixed amount `negotiation_rules` defines for that outcome. The proposal text is never
+        interpreted. The world is updated on a scratch copy and only committed once it validates.
+        """
+        with self._lock:
+            record, index = self._find_negotiation(negotiation_id)
+            conference_id = record.conference.id
+            participant = self._member(record, participant_id)
+            negotiation = record.negotiations[index]
+            if participant.role is not ParticipantRole.PARTICIPANT or participant.id != negotiation.receiver_participant_id:
+                if participant.id == negotiation.proposer_participant_id:
+                    raise ForbiddenError(
+                        f"You cannot answer your own proposal; only the delegate for {negotiation.receiver} can"
+                    )
+                raise ForbiddenError(
+                    f"Only the delegate representing {negotiation.receiver} can answer negotiation '{negotiation.id}'"
+                )
+
+            now = self._clock()
+            self._expire_stale_negotiations(record, now)
+            negotiation = record.negotiations[index]  # may just have expired
+            if is_finalized(negotiation):
+                raise ConflictError(
+                    f"Negotiation '{negotiation.id}' is already {negotiation.status.value} "
+                    "and can no longer be answered"
+                )
+            self.check_action(conference_id, ActionType.NEGOTIATION.value)  # ACTIVE + the phase permits NEGOTIATION
+
+            try:
+                updated = apply_response(negotiation, action, counter_offer, now)
+            except NegotiationStateError as exc:
+                raise ConflictError(str(exc)) from None
+            except ValueError as exc:
+                raise InvalidRequestError(str(exc)) from None
+
+            draft = record.world.model_copy(deep=True)
+            proposer_country = self._country_by_code(draft, negotiation.proposer)
+            receiver_country = self._country_by_code(draft, negotiation.receiver)
+            if proposer_country is None or receiver_country is None:
+                raise ConflictError("A country of this negotiation is not part of the conference's world")
+            result = apply_negotiation_outcome(
+                draft, proposer_country.id, receiver_country.id, updated.status, negotiation.id
+            )
+            problems = validate_world(draft)
+            if problems:  # a rule bug must never corrupt the conference's world
+                raise RuntimeError("Negotiation would corrupt the world: " + "; ".join(problems))
+
+            draft.events.append(
+                DiplomacyEvent(
+                    id=len(draft.events) + 1,
+                    turn=draft.turn,
+                    type=result.type,
+                    actor=receiver_country.id,  # the answering country acts; the proposer is the target
+                    target=proposer_country.id,
+                    message=result.message,
+                    timestamp=now,
+                    effects={
+                        **result.effects,
+                        "conference_id": conference_id,
+                        "proposer": negotiation.proposer,
+                        "receiver": negotiation.receiver,
+                        "status": updated.status.value,
+                        "phase": record.conference.current_phase.value,
+                        "characters": len(updated.counter_offer or ""),
+                    },
+                )
+            )
+
+            record.world = draft  # commit: world and negotiation together
+            record.negotiations[index] = updated
+            return updated.model_copy(deep=True)
+
+    def get_negotiations(
+        self,
+        conference_id: str,
+        status: Optional[NegotiationStatus] = None,
+        country_code: Optional[str] = None,
+    ) -> list[Negotiation]:
+        """The conference's negotiation history, oldest first, optionally filtered by status and/or country.
+
+        `country_code` matches negotiations the country took part in, as proposer or receiver. Stale negotiations
+        are expired first so the statuses returned are current. Returns copies, so callers (the API, later AI
+        agents) can never alter the stored history. Readable in any conference state, including COMPLETED.
+        """
+        with self._lock:
+            record = self._get(conference_id)
+            self._expire_stale_negotiations(record, self._clock())
+            code = country_code.strip().upper() if country_code else None
+            return [
+                n.model_copy(deep=True)
+                for n in record.negotiations
+                if (status is None or n.status is status) and (code is None or code in (n.proposer, n.receiver))
+            ]
 
     def report(self, conference_id: str) -> SimulationReport:
         """Report on a started conference's own world. Read-only; 409 until the conference has started."""

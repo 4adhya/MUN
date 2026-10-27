@@ -49,7 +49,8 @@ from .models import (
     SanctionRequest,
     WorldState,
 )
-from .mun import ConferencePhase, Participant, Speech
+from .mun import ConferencePhase, Negotiation, NegotiationStatus, Participant, Speech
+from .negotiation_schemas import NegotiationProposeRequest, NegotiationRespondRequest
 from .report_schemas import SimulationReport
 from .report_service import build_report
 from .rules import ActionError
@@ -349,6 +350,61 @@ def get_speakers(conference_id: str) -> SpeakerQueueView:
 )
 def next_speaker(conference_id: str) -> SpeakerQueueView:
     return conference_service.next_speaker(conference_id)
+
+
+# ---------------------------------------------------------------------------
+# MUN negotiations and diplomacy (Phase 5)
+# ---------------------------------------------------------------------------
+
+NEGOTIATION_ERRORS = {
+    403: {"model": ErrorResponse, "description": "Participant is not in this conference, cannot negotiate, or is not the delegate the proposal was addressed to."},
+    404: {"model": ErrorResponse, "description": "Conference or negotiation not found."},
+    409: {"model": ErrorResponse, "description": "Conference not ACTIVE, phase does not permit negotiation, or the negotiation is already final (answered or expired)."},
+    422: {"model": ErrorResponse, "description": "Invalid request, receiver not seated in the conference, or COUNTER without a counter-offer."},
+}
+
+
+@app.post(
+    "/negotiation/propose",
+    response_model=Negotiation,
+    status_code=201,
+    tags=["negotiations"],
+    summary="Propose a negotiation to another delegate's country (only in phases that permit negotiation)",
+    responses=NEGOTIATION_ERRORS,
+)
+def propose_negotiation(req: NegotiationProposeRequest) -> Negotiation:
+    return conference_service.propose_negotiation(req.conference_id, req.participant_id, req.receiver, req.proposal)
+
+
+@app.post(
+    "/negotiation/{negotiation_id}/respond",
+    response_model=Negotiation,
+    tags=["negotiations"],
+    summary="Receiving delegate accepts, rejects or counters a PENDING negotiation",
+    responses=NEGOTIATION_ERRORS,
+)
+def respond_to_negotiation(negotiation_id: str, req: NegotiationRespondRequest) -> Negotiation:
+    return conference_service.respond_negotiation(negotiation_id, req.participant_id, req.action, req.counter_offer)
+
+
+@app.get(
+    "/conference/{conference_id}/negotiations",
+    response_model=list[Negotiation],
+    tags=["negotiations"],
+    summary="Negotiation history of a conference, oldest first (optionally filtered by status and/or country)",
+    responses={404: NEGOTIATION_ERRORS[404], 422: NEGOTIATION_ERRORS[422]},
+)
+def list_negotiations(
+    conference_id: str,
+    status: Optional[NegotiationStatus] = Query(default=None, description="Only negotiations with this status"),
+    country_code: Optional[str] = Query(
+        default=None,
+        min_length=2,
+        max_length=2,
+        description="Only negotiations this ISO alpha-2 country took part in (as proposer or receiver)",
+    ),
+) -> list[Negotiation]:
+    return conference_service.get_negotiations(conference_id, status, country_code)
 
 
 # ---------------------------------------------------------------------------

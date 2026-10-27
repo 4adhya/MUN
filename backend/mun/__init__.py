@@ -7,6 +7,22 @@ from .committees import COMMITTEE_CONFIGS, CommitteeConfig, UnknownCommitteeErro
 from .enums import Committee, ConferencePhase, ConferenceStatus, ParticipantRole
 from .metrics import MUNWorldMetrics
 from .models import Conference, Participant
+from .negotiations import (
+    ACTION_OUTCOME,
+    FINAL_STATUSES,
+    MAX_PROPOSAL_CHARS,
+    NEGOTIATION_TTL_SECONDS,
+    Negotiation,
+    NegotiationAction,
+    NegotiationStateError,
+    NegotiationStatus,
+    apply_response,
+    default_expiry,
+    expire,
+    expire_reason,
+    is_finalized,
+    should_expire,
+)
 from .phases import (
     COMPLETED_STEP,
     PHASE_ACTIONS,
@@ -24,9 +40,13 @@ from .phases import (
 from .speeches import MAX_SPEECH_CHARS, NoSpeakersRemainingError, SpeakerState, Speech, open_floor, pass_floor
 
 __all__ = [
+    "ACTION_OUTCOME",
     "COMMITTEE_CONFIGS",
     "COMPLETED_STEP",
+    "FINAL_STATUSES",
+    "MAX_PROPOSAL_CHARS",
     "MAX_SPEECH_CHARS",
+    "NEGOTIATION_TTL_SECONDS",
     "PHASE_ACTIONS",
     "PHASE_DURATION_SECONDS",
     "PHASE_ORDER",
@@ -39,6 +59,10 @@ __all__ = [
     "ConferencePhase",
     "ConferenceStatus",
     "MUNWorldMetrics",
+    "Negotiation",
+    "NegotiationAction",
+    "NegotiationStateError",
+    "NegotiationStatus",
     "NoSpeakersRemainingError",
     "Participant",
     "ParticipantRole",
@@ -46,11 +70,17 @@ __all__ = [
     "Speech",
     "UnknownCommitteeError",
     "allowed_actions",
+    "apply_response",
     "check_transition",
+    "default_expiry",
+    "expire",
+    "expire_reason",
     "get_committee_config",
     "is_action_allowed",
+    "is_finalized",
     "next_phase",
     "open_floor",
     "pass_floor",
     "phase_deadline",
+    "should_expire",
 ]
