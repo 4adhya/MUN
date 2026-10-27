@@ -39,6 +39,7 @@ from .conference_schemas import (
     JoinConferenceRequest,
 )
 from .conference_service import conference_service
+from .crisis_routes import router as crisis_router
 from .country_registry import CountryRecord, find_world_country, resolve_country
 from .models import (
     ActionResponse,
@@ -564,6 +565,10 @@ def list_resolutions(
     status: Optional[ResolutionStatus] = Query(default=None, description="Only resolutions with this status"),
 ) -> list[ResolutionView]:
     return resolution_service.list_resolutions(conference_id, status)
+
+
+# MUN crises (Phase 7): all crisis routes live in crisis_routes.py
+app.include_router(crisis_router)
 
 
 # ---------------------------------------------------------------------------
