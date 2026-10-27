@@ -8,13 +8,13 @@ Run from the repo root:
 Uses the backend's starting world in-process. It does NOT start the API and does NOT execute any action:
 the output is a validated proposal only.
 
-The result is labelled "AI DECISION" (Gemini's validated answer) or "FALLBACK DECISION" (Gemini failed or
-answered badly, so India safely does NO_ACTION; the original problem is printed too).
+The result is "AI DECISION" (Gemini's validated answer) or a failure report (Gemini failed or answered badly).
+A failure prints NO decision at all: it is never turned into a NO_ACTION.
 
-Exit codes (they describe what Gemini did, even when a fallback decision was printed):
+Exit codes:
     0  Gemini answered with a valid decision                            -> AI DECISION
-    1  the call to Gemini failed (missing key, quota, network, 503...)  -> FALLBACK DECISION, "gemini_error"
-    2  Gemini answered, but the answer is not a valid decision          -> FALLBACK DECISION, "invalid_response"
+    1  the call to Gemini failed (missing key, quota, network, 503...)  -> "gemini_error", no decision
+    2  Gemini answered, but the answer is not a valid decision          -> "invalid_response", no decision
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ AI_DIR = Path(__file__).resolve().parent
 sys.path[:0] = [str(AI_DIR.parent), str(AI_DIR)]
 
 from ai.country_agent import IndiaAgent  # noqa: E402
-from ai.fallback import decide_with_fallback  # noqa: E402
+from ai.fallback import request_decision  # noqa: E402
 from backend.simulation import create_initial_world  # noqa: E402
 
 DEFAULT_SITUATION = "Brazil blocked our trade route."
@@ -46,12 +46,11 @@ def main() -> int:
         print("--- SYSTEM PROMPT ---\n" + agent.build_system_prompt())
         print("\n--- USER PROMPT ---\n" + agent.build_user_prompt(args.situation, world) + "\n")
 
-    outcome = decide_with_fallback(agent, args.situation, world)
-    decision_json = json.dumps(outcome.decision.model_dump(mode="json"), indent=2)
+    outcome = request_decision(agent, args.situation, world)
 
-    if not outcome.is_fallback:
+    if outcome.ok:
         print("AI DECISION (a proposal only; nothing was executed):")
-        print(decision_json)
+        print(json.dumps(outcome.decision.model_dump(mode="json"), indent=2))
         return EXIT_OK
 
     if outcome.error_code == "invalid_response":
@@ -64,8 +63,7 @@ def main() -> int:
         print(f"  {outcome.error}")
         code = EXIT_GEMINI_ERROR
     print()
-    print("FALLBACK DECISION (a safe default, not chosen by the AI; nothing was executed):")
-    print(decision_json)
+    print("NO DECISION: the AI request failed, so there is nothing to propose or execute.")
     return code
 
 

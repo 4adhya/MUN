@@ -178,7 +178,7 @@ def _build_config(system_instruction: str, timeout_ms: Optional[int] = None, jso
         system_instruction=system_instruction,
         response_mime_type=JSON_MIME_TYPE if json_mode else None,  # None: plain-text reply (advisor chat)
         temperature=0.5,
-        max_output_tokens=2048,  # was 400: Gemma hit MAX_TOKENS before finishing the JSON,
+        max_output_tokens=512,  # was 400: Gemma hit MAX_TOKENS before finishing the JSON,
         thinking_config=_thinking_config(model) if use_thinking else None,  # thinking off for Gemma 4: it was the main source of delay
         http_options=http_options,
     )
@@ -388,6 +388,8 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
                 # >= 10 s: guaranteed by the check above. Capped per attempt so one stuck call cannot eat the budget.
                 timeout_ms = int(min(TIMEOUT_MS, remaining * 1000, _attempt_cap_seconds() * 1000))
                 try:
+                    # json_mode decides response_mime_type: True -> "application/json" (agent decisions),
+                    # False -> plain text (advisor chat).
                     config = _build_config(system_instruction, timeout_ms, json_mode, model, not drop_thinking)
                     try:
                         response = client.models.generate_content(model=model, contents=prompt, config=config)

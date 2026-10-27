@@ -7,13 +7,14 @@ Run from the repo root:
 
 It runs against a FRESH in-memory simulation (the starting world) inside this process, using the backend's own
 action functions. The running API server's world is not touched, and nothing persists after the script ends.
-Needs GEMINI_API_KEY for a real AI decision; without Gemini you see the fallback (NO_ACTION, world unchanged).
+Needs GEMINI_API_KEY for a real AI decision. Without Gemini the turn FAILS: no decision exists, nothing is
+executed and the world is unchanged. A failure is never reported as a NO_ACTION.
 The situation is given to Gemini as context only. It never tells the AI which decision to make.
 
 Exit codes:
     0  a decision was made and handled (an executed action, or NO_ACTION chosen by the AI)
-    1  Gemini unavailable (call failed)        -> FALLBACK NO_ACTION, world unchanged
-    2  Gemini answered but invalidly           -> FALLBACK NO_ACTION, world unchanged
+    1  Gemini unavailable (call failed)        -> AI REQUEST FAILED, no decision, world unchanged
+    2  Gemini answered but invalidly           -> AI REQUEST FAILED, no decision, world unchanged
     3  the AI's decision was rejected by the backend (world unchanged)
 """
 from __future__ import annotations
@@ -25,6 +26,7 @@ from pathlib import Path
 AI_DIR = Path(__file__).resolve().parent
 sys.path[:0] = [str(AI_DIR.parent), str(AI_DIR)]
 
+from backend.country_registry import find_world_country  # noqa: E402
 from backend.simulation import Simulation  # noqa: E402
 from ai.country_turn import create_agent, run_country_turn  # noqa: E402
 
@@ -52,14 +54,15 @@ def _block(title: str, lines: list[str] | str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one AI turn for a country against the simulation.")
     parser.add_argument("situation", nargs="?", default=DEFAULT_SITUATION)
-    parser.add_argument("--country", default='india', help="country id (only india has an agent for now)")
+    parser.add_argument("--country", default="india", help="country id, name or code (only india has an agent for now)")
     args = parser.parse_args()
 
     sim = Simulation()  # fresh starting world, in this process only
-    country_id = args.country.strip().lower()
+    resolved = find_world_country(sim.world, args.country)  # same registry lookup as the API ("India", "IND", ...)
+    if resolved is None:
+        parser.error(f"unknown country id '{args.country.strip()}'")
+    country_id = resolved.id
     before = {c.id: c.model_copy(deep=True) for c in sim.world.countries}
-    if country_id not in before:
-        parser.error(f"unknown country id '{country_id}'")
     try:
         agent = create_agent(country_id)
     except ValueError as exc:  # e.g. a country that has no agent configured yet
@@ -79,42 +82,44 @@ def main() -> int:
     _block("Situation", result.situation)
     _block("World context", _world_lines(before[country_id], names))
 
-    if result.used_fallback:
-        label = "Gemini unavailable" if result.fallback_error_code == "gemini_error" else "Gemini gave an invalid answer"
-        print(f"AI unavailable -> fallback ({label}):\n{result.fallback_error}")
+    if result.ai_failed:
+        label = "Gemini unavailable" if result.error_code == "gemini_error" else "Gemini gave an invalid answer"
+        print(f"AI REQUEST FAILED ({label}):\n{result.error}")
         if result.raw_response is not None:
             print(f"raw reply: {result.raw_response!r}")
         print()
-        _block("AI Decision", "FALLBACK DECISION (safe default, not chosen by the AI)")
-    else:
-        _block("AI Decision", "AI DECISION (chosen by Gemini, validated)")
-    _block("Decision", f"decision: {d.decision.value}" + (f" -> {d.target}" if d.target else ""))
-    if d.target:
-        _block("Target", d.target)
-    _block("Reason", d.reason)
-
-    if a.status == "executed":
-        amount = f" (amount {a.amount:g})" if a.amount is not None else ""
-        _block("Execution", f"{a.action} ACCEPTED by the backend{amount}. {a.action} APPLIED.")
-        print("Result: world state updated.\n")
-        after_me, after_other = sim.get_country(country_id), sim.get_country(a.target)
-        _block(f"World Result — {name}", _world_lines(after_me, names, a.target))
-        _block(f"World Result — {names[a.target]}", _world_lines(after_other, names, country_id))
-        _block("Event", f"#{a.event['id']}: {a.message}")
-    elif a.status == "no_action":
-        _block("Execution", "NO ACTION. The world was not modified.")
+        _block("AI Decision", "NONE. No decision was made, so there is nothing to execute (this is not a choice to do nothing).")
+        _block("Execution", "NOT EXECUTED. No action was attempted.")
         _block("World", "UNCHANGED (world unchanged)")
     else:
-        _block("Execution", f"{a.action} REJECTED by the backend (HTTP {a.http_status}): {a.message}")
-        _block("World", "UNCHANGED (world unchanged). The action did NOT happen.")
+        _block("AI Decision", "AI DECISION (chosen by Gemini, validated)")
+        _block("Decision", f"decision: {d.decision.value}" + (f" -> {d.target}" if d.target else ""))
+        if d.target:
+            _block("Target", d.target)
+        _block("Reason", d.reason)
+
+        if a.status == "executed":
+            amount = f" (amount {a.amount:g})" if a.amount is not None else ""
+            _block("Execution", f"{a.action} ACCEPTED by the backend{amount}. {a.action} APPLIED.")
+            print("Result: world state updated.\n")
+            after_me, after_other = sim.get_country(country_id), sim.get_country(a.target)
+            _block(f"World Result — {name}", _world_lines(after_me, names, a.target))
+            _block(f"World Result — {names[a.target]}", _world_lines(after_other, names, country_id))
+            _block("Event", f"#{a.event['id']}: {a.message}")
+        elif a.status == "no_action":
+            _block("Execution", "NO ACTION. The world was not modified.")
+            _block("World", "UNCHANGED (world unchanged)")
+        else:
+            _block("Execution", f"{a.action} REJECTED by the backend (HTTP {a.http_status}): {a.message}")
+            _block("World", "UNCHANGED (world unchanged). The action did NOT happen.")
 
     print(f"Events recorded this run: {len(sim.world.events) - events_before}")
     print(LINE)
 
+    if result.ai_failed:
+        return EXIT_GEMINI_ERROR if result.error_code == "gemini_error" else EXIT_INVALID_RESPONSE
     if not a.ok:
         return EXIT_REJECTED
-    if result.used_fallback:
-        return EXIT_GEMINI_ERROR if result.fallback_error_code == "gemini_error" else EXIT_INVALID_RESPONSE
     return EXIT_OK
 
 

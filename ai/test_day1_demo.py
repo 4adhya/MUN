@@ -1,7 +1,7 @@
 """Day 1 acceptance tests: one complete India turn, end to end. Every Gemini reply is a MOCK (no live API).
 
-    world -> India agent -> (mock) Gemini -> CountryDecision -> validation -> fallback if needed
-          -> simulation action if appropriate -> updated world / event
+    world -> India agent -> (mock) Gemini -> CountryDecision -> validation
+          -> simulation action if appropriate -> updated world / event   (an AI failure = no decision)
 
 Run from the repo root:  python -m pytest ai/test_day1_demo.py -q
 """
@@ -89,17 +89,17 @@ def test_ai_no_action_does_not_mutate_the_world(sim):
     assert dump(sim) == before and sim.world.events == []
 
 
-# --- Gemini fails -> fallback, world untouched ---------------------------------------------------------------------------
+# --- Gemini fails -> no decision (never a NO_ACTION), world untouched ---------------------------------------------------
 @pytest.mark.parametrize(
     "bad",
     [CheckError("Gemini service error (HTTP 503)", 3), "{not json", reply("ATTACK", "Brazil"), reply("SANCTION", "Atlantis")],
     ids=["unavailable", "malformed", "invalid_decision", "unknown_target"],
 )
-def test_ai_failure_falls_back_to_no_action_and_never_touches_the_world(sim, bad):
+def test_ai_failure_is_not_a_no_action_and_never_touches_the_world(sim, bad):
     before = dump(sim)
     result, _ = turn(sim, bad)
-    assert result.source == "fallback" and result.used_fallback
-    assert result.decision.decision.value == "NO_ACTION" and result.action.status == "no_action"
+    assert result.source == "failed" and result.ai_failed
+    assert result.decision is None and result.action is None and not result.ok
     assert dump(sim) == before and sim.world.events == []
 
 
@@ -169,17 +169,17 @@ def run_cli(monkeypatch, capsys, llm_reply, *args):
 
 def test_cli_ai_sanction_is_labelled_ai_and_shows_the_world_result(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, reply("SANCTION", "Brazil"))
-    assert code == 0 and "INDIA AI TURN" in out and "AI DECISION" in out and "FALLBACK" not in out
+    assert code == 0 and "INDIA AI TURN" in out and "AI DECISION" in out and "AI REQUEST FAILED" not in out
     for section in ("Country:", "Situation:", "World context:", "Decision:", "Target:", "Reason:", "Execution:",
                     "SANCTION APPLIED", "World Result", "Event:"):
         assert section in out, section
     assert SITUATION in out and "GDP:" in out and "Stability:" in out and "Trade partners:" in out
 
 
-def test_cli_fallback_is_labelled_fallback_and_world_unchanged(monkeypatch, capsys):
+def test_cli_ai_failure_is_labelled_a_failure_and_world_unchanged(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, CheckError("Gemini service error (HTTP 503)", 3))
     assert code == run_turn.EXIT_GEMINI_ERROR
-    assert "FALLBACK DECISION" in out and "AI DECISION" not in out and "NO_ACTION" in out
+    assert "AI REQUEST FAILED" in out and "AI DECISION" not in out and "NO_ACTION" not in out and "FALLBACK" not in out
     assert "UNCHANGED" in out and "APPLIED" not in out
 
 

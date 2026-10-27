@@ -1,4 +1,4 @@
-"""Phase 5 tests: one full AI turn  world -> Gemini (MOCKED) -> validation/fallback -> backend action -> result.
+"""Phase 5 tests: one full AI turn  world -> Gemini (MOCKED) -> validation -> backend action -> result.
 
 Every Gemini reply here is a MOCK. Nothing calls the live API. Each test uses a fresh `Simulation()`.
 
@@ -14,7 +14,6 @@ from backend.simulation import Simulation
 from ai.check_gemini import CheckError
 from ai.country_agent import IndiaAgent
 from ai.country_turn import AGENT_FACTORIES, NO_INCIDENT_SITUATION, create_agent, default_situation, run_country_turn
-from ai.fallback import FALLBACK_REASON
 
 SITUATION = "Brazil blocked India's trade."
 
@@ -67,8 +66,8 @@ def allied_simulation():
 # --- successful AI decisions reach the backend --------------------------------------------------------------------
 def test_ai_sanction_is_executed_through_the_backend(sim):
     result, llm = turn(sim, reply("SANCTION", "Brazil"))
-    assert (result.source, result.used_fallback) == ("ai", False)
-    assert result.fallback_error_code is None and result.fallback_error is None
+    assert result.source == "ai" and not result.ai_failed
+    assert result.error_code is None and result.error is None
     assert result.decision.decision.value == "SANCTION" and result.decision.target == "Brazil"
     assert result.ok and result.world_changed and result.action.status == "executed"
     assert "india" in sim.get_country("brazil").sanctions
@@ -94,12 +93,12 @@ def test_ai_aid_is_executed_with_the_default_amount(sim):
 def test_ai_no_action_does_not_mutate_the_world(sim):
     before = dump(sim)
     result, _ = turn(sim, reply("NO_ACTION", None, reason="Nothing needs doing."))
-    assert result.source == "ai" and not result.used_fallback  # a genuine AI choice, not a fallback
+    assert result.source == "ai" and not result.ai_failed  # a genuine AI choice, not a failure
     assert result.action.status == "no_action" and result.ok and not result.world_changed
     assert dump(sim) == before and sim.world.events == []
 
 
-# --- fallback --------------------------------------------------------------------------------------------------------
+# --- AI failure: no decision, never a NO_ACTION ------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "bad_reply, code",
     [
@@ -114,15 +113,14 @@ def test_ai_no_action_does_not_mutate_the_world(sim):
     ],
     ids=["503", "timeout", "unexpected", "empty", "malformed", "bad_decision", "bad_target", "missing_target"],
 )
-def test_gemini_failure_or_invalid_reply_uses_the_fallback_and_changes_nothing(sim, bad_reply, code):
+def test_gemini_failure_or_invalid_reply_is_a_failure_not_a_no_action(sim, bad_reply, code):
     before = dump(sim)
     result, _ = turn(sim, bad_reply)  # must not raise
 
-    assert result.source == "fallback" and result.used_fallback
-    assert result.fallback_error_code == code and result.fallback_error
-    assert result.decision.decision.value == "NO_ACTION" and result.decision.target is None
-    assert result.decision.reason == FALLBACK_REASON.format(country="India")
-    assert result.action.status == "no_action" and result.ok and not result.world_changed
+    assert result.source == "failed" and result.ai_failed
+    assert result.error_code == code and result.error and result.failure_reason
+    assert result.decision is None and result.action is None  # no NO_ACTION, nothing attempted
+    assert not result.ok and not result.world_changed
     assert dump(sim) == before and sim.world.events == []
 
 
@@ -138,7 +136,7 @@ def test_valid_ai_decision_rejected_by_the_backend_is_not_reported_as_success():
     before = dump(sim)
     result, _ = turn(sim, reply("ALLIANCE", "France"))  # valid decision, but already allied
 
-    assert result.source == "ai" and not result.used_fallback  # the AI was fine
+    assert result.source == "ai" and not result.ai_failed  # the AI was fine
     assert result.action.status == "rejected" and result.action.http_status == 409
     assert not result.ok and not result.world_changed
     assert result.action.event is None
@@ -194,12 +192,18 @@ def test_country_id_is_a_parameter_and_is_validated(sim):
     assert run_country_turn("  INDIA ", SITUATION, simulation=sim, llm=FakeLLM(reply("NO_ACTION", None))).ok
 
 
+@pytest.mark.parametrize("alias", ["India", "IND", "IN", " india "])
+def test_country_is_resolved_through_the_registry_like_the_api(sim, alias):
+    result = run_country_turn(alias, SITUATION, simulation=sim, llm=FakeLLM(reply("NO_ACTION", None)))
+    assert result.country_id == "india" and result.ok
+
+
 def test_agent_for_the_wrong_country_is_refused(sim):
     with pytest.raises(ValueError, match="not 'brazil'"):
         run_country_turn("brazil", SITUATION, simulation=sim, agent=IndiaAgent(llm=FakeLLM("")))
 
 
-def test_bad_situation_is_a_caller_error_not_a_fallback(sim):
+def test_bad_situation_is_a_caller_error_not_an_ai_failure(sim):
     with pytest.raises(ValueError):
         run_country_turn("india", "   ", simulation=sim, llm=FakeLLM(reply()))
     assert sim.world.events == []
@@ -238,16 +242,18 @@ def test_cli_shows_a_successful_flow(monkeypatch, capsys):
     assert "Events recorded this run: 1" in out and "FALLBACK" not in out
 
 
-def test_cli_shows_the_fallback_flow(monkeypatch, capsys):
+def test_cli_shows_an_ai_failure_as_a_failure_not_a_decision(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, CheckError("Gemini service error (HTTP 503)", 3), SITUATION)
     assert code == run_turn.EXIT_GEMINI_ERROR
-    assert "AI unavailable -> fallback" in out and "FALLBACK DECISION" in out and "NO_ACTION" in out
+    assert "AI REQUEST FAILED" in out and "No decision was made" in out and "NOT EXECUTED" in out
+    assert "AI DECISION" not in out and "NO_ACTION" not in out and "NO ACTION" not in out and "FALLBACK" not in out
     assert "world unchanged" in out and "Events recorded this run: 0" in out and "ACCEPTED" not in out
 
 
 def test_cli_invalid_reply_and_rejection_exit_codes(monkeypatch, capsys):
     code, out = run_cli(monkeypatch, capsys, "not json", SITUATION)
-    assert code == run_turn.EXIT_INVALID_RESPONSE and "FALLBACK DECISION" in out and "not json" in out
+    assert code == run_turn.EXIT_INVALID_RESPONSE and "AI REQUEST FAILED" in out and "not json" in out
+    assert "FALLBACK" not in out and "NO_ACTION" not in out
 
     monkeypatch.setattr(run_turn, "Simulation", allied_simulation)  # India and France are already allied
     code, out = run_cli(monkeypatch, capsys, reply("ALLIANCE", "France"), SITUATION)
