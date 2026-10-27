@@ -25,7 +25,11 @@ relationship between the two countries only through the deterministic rules in `
 proposal text. A PENDING negotiation expires lazily: whenever the service touches negotiations (and when the phase
 advances) it first expires every one whose time is up or whose phase no longer permits negotiating.
 
-Nothing here handles resolutions, voting, crisis logic, scoring or persistence (later phases).
+Phase 6 adds resolutions and voting. Their data lives on the conference record too (`resolutions` and `votes`, both
+append-only histories), but ALL of their rules live in `resolution_service.py`, which works on these records through
+this service's helpers (`_get`, `_member`, `check_action`) so that it never duplicates a gate.
+
+Nothing here handles crisis logic, scoring or persistence (later phases).
 """
 from __future__ import annotations
 
@@ -74,6 +78,8 @@ from .mun import (
     NegotiationAction,
     NegotiationStateError,
     NegotiationStatus,
+    Resolution,
+    Vote,
     apply_response,
     default_expiry,
     expire,
@@ -114,6 +120,8 @@ class ConferenceRecord:
     speeches: list[Speech] = field(default_factory=list)  # append-only history; never cleared by phase changes
     speakers: SpeakerState = field(default_factory=SpeakerState)  # rebuilt on every phase change
     negotiations: list[Negotiation] = field(default_factory=list)  # append-only history; entries only change status
+    resolutions: list[Resolution] = field(default_factory=list)  # Phase 6; managed only by resolution_service
+    votes: list[Vote] = field(default_factory=list)  # Phase 6; append-only, never edited or withdrawn
 
 
 def resolve_seat(identifier: str) -> Country:

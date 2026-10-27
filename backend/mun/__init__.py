@@ -3,7 +3,13 @@
 Sits on top of the geopolitical simulation (backend.models / rules / simulation)
 and never replaces it. Nothing in this package imports the simulation.
 """
-from .committees import COMMITTEE_CONFIGS, CommitteeConfig, UnknownCommitteeError, get_committee_config
+from .committees import (
+    COMMITTEE_CONFIGS,
+    UNSC_PERMANENT_MEMBERS,
+    CommitteeConfig,
+    UnknownCommitteeError,
+    get_committee_config,
+)
 from .enums import Committee, ConferencePhase, ConferenceStatus, ParticipantRole
 from .metrics import MUNWorldMetrics
 from .models import Conference, Participant
@@ -37,10 +43,69 @@ from .phases import (
     next_phase,
     phase_deadline,
 )
+from .resolutions import (
+    ALLOWED_TRANSITIONS,
+    AMENDABLE_STATUSES,
+    EDITABLE_STATUSES,
+    MAX_CLAUSE_CHARS,
+    MAX_CLAUSES,
+    MAX_SPONSORS,
+    MAX_TITLE_CHARS,
+    Amendment,
+    AmendmentAction,
+    Clause,
+    ClauseType,
+    Resolution,
+    ResolutionStateError,
+    ResolutionStatus,
+    check_transition as check_resolution_transition,
+    is_final as is_resolution_final,
+    layout_clauses,
+    operative_count,
+)
 from .speeches import MAX_SPEECH_CHARS, NoSpeakersRemainingError, SpeakerState, Speech, open_floor, pass_floor
+from .voting import (
+    AbstentionBehavior,
+    MajorityType,
+    Vote,
+    VoteChoice,
+    VoteResult,
+    VotingError,
+    VotingRules,
+    required_yes,
+    tally,
+)
 
 __all__ = [
     "ACTION_OUTCOME",
+    "ALLOWED_TRANSITIONS",
+    "AMENDABLE_STATUSES",
+    "EDITABLE_STATUSES",
+    "MAX_CLAUSES",
+    "MAX_CLAUSE_CHARS",
+    "MAX_SPONSORS",
+    "MAX_TITLE_CHARS",
+    "UNSC_PERMANENT_MEMBERS",
+    "AbstentionBehavior",
+    "Amendment",
+    "AmendmentAction",
+    "Clause",
+    "ClauseType",
+    "MajorityType",
+    "Resolution",
+    "ResolutionStateError",
+    "ResolutionStatus",
+    "Vote",
+    "VoteChoice",
+    "VoteResult",
+    "VotingError",
+    "VotingRules",
+    "check_resolution_transition",
+    "is_resolution_final",
+    "layout_clauses",
+    "operative_count",
+    "required_yes",
+    "tally",
     "COMMITTEE_CONFIGS",
     "COMPLETED_STEP",
     "FINAL_STATUSES",

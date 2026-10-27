@@ -49,10 +49,21 @@ from .models import (
     SanctionRequest,
     WorldState,
 )
-from .mun import ConferencePhase, Negotiation, NegotiationStatus, Participant, Speech
+from .mun import ConferencePhase, Negotiation, NegotiationStatus, Participant, ResolutionStatus, Speech
 from .negotiation_schemas import NegotiationProposeRequest, NegotiationRespondRequest
 from .report_schemas import SimulationReport
 from .report_service import build_report
+from .resolution_schemas import (
+    ClauseCreateRequest,
+    ClauseUpdateRequest,
+    ResolutionActorRequest,
+    ResolutionAmendRequest,
+    ResolutionCreateRequest,
+    ResolutionView,
+    VoteRequest,
+    VoteResponse,
+)
+from .resolution_service import resolution_service
 from .rules import ActionError
 from .simulation import create_initial_world, simulation
 from .speech_schemas import SpeakerQueueView, SpeechSubmitRequest
@@ -405,6 +416,150 @@ def list_negotiations(
     ),
 ) -> list[Negotiation]:
     return conference_service.get_negotiations(conference_id, status, country_code)
+
+
+# ---------------------------------------------------------------------------
+# MUN resolutions and voting (Phase 6)
+# ---------------------------------------------------------------------------
+
+RESOLUTION_ERRORS = {
+    403: {"model": ErrorResponse, "description": "Participant is not in this conference, is not a delegate, is not a sponsor, or the country does not match."},
+    404: {"model": ErrorResponse, "description": "Conference, resolution or clause not found."},
+    409: {"model": ErrorResponse, "description": "Conference not ACTIVE, phase does not permit the action, or the resolution is in the wrong status (or the country already voted)."},
+    422: {"model": ErrorResponse, "description": "Invalid request or content (blank or too long text, no operative clause, unseated sponsor)."},
+}
+
+
+@app.post(
+    "/resolution",
+    response_model=ResolutionView,
+    status_code=201,
+    tags=["resolutions"],
+    summary="Start drafting a resolution (status DRAFT; the creator's country is a sponsor)",
+    responses=RESOLUTION_ERRORS,
+)
+def create_resolution(req: ResolutionCreateRequest) -> ResolutionView:
+    return resolution_service.create_resolution(req.conference_id, req.participant_id, req.title, req.sponsors)
+
+
+@app.get(
+    "/resolution/{resolution_id}",
+    response_model=ResolutionView,
+    tags=["resolutions"],
+    summary="A resolution with its clauses, amendments, roll-call votes and (once decided) its official result",
+    responses={404: RESOLUTION_ERRORS[404]},
+)
+def get_resolution(resolution_id: str) -> ResolutionView:
+    return resolution_service.get(resolution_id)
+
+
+@app.post(
+    "/resolution/{resolution_id}/clause",
+    response_model=ResolutionView,
+    status_code=201,
+    tags=["resolutions"],
+    summary="Add a clause to a DRAFT resolution (sponsors only); clauses are renumbered in reading order",
+    responses=RESOLUTION_ERRORS,
+)
+def add_clause(resolution_id: str, req: ClauseCreateRequest) -> ResolutionView:
+    return resolution_service.add_clause(resolution_id, req.participant_id, req.type, req.text)
+
+
+@app.patch(
+    "/resolution/{resolution_id}/clause/{clause_id}",
+    response_model=ResolutionView,
+    tags=["resolutions"],
+    summary="Change a clause's text and/or type in a DRAFT resolution (sponsors only)",
+    responses=RESOLUTION_ERRORS,
+)
+def update_clause(resolution_id: str, clause_id: str, req: ClauseUpdateRequest) -> ResolutionView:
+    return resolution_service.update_clause(resolution_id, clause_id, req.participant_id, req.text, req.type)
+
+
+@app.delete(
+    "/resolution/{resolution_id}/clause/{clause_id}",
+    response_model=ResolutionView,
+    tags=["resolutions"],
+    summary="Remove a clause from a DRAFT resolution (sponsors only); returns the renumbered resolution",
+    responses=RESOLUTION_ERRORS,
+)
+def remove_clause(
+    resolution_id: str,
+    clause_id: str,
+    participant_id: str = Query(min_length=1, max_length=64, description="The sponsoring delegate removing the clause"),
+) -> ResolutionView:
+    return resolution_service.remove_clause(resolution_id, clause_id, participant_id.strip())
+
+
+@app.post(
+    "/resolution/{resolution_id}/amend",
+    response_model=ResolutionView,
+    status_code=201,
+    tags=["resolutions"],
+    summary="Amend a SUBMITTED or UNDER_REVIEW resolution (a sponsor's friendly amendment, DRAFTING phase only)",
+    responses=RESOLUTION_ERRORS,
+)
+def amend_resolution(resolution_id: str, req: ResolutionAmendRequest) -> ResolutionView:
+    return resolution_service.amend(resolution_id, req.participant_id, req.action, req.clause_id, req.type, req.text)
+
+
+@app.post(
+    "/resolution/{resolution_id}/sign",
+    response_model=ResolutionView,
+    tags=["resolutions"],
+    summary="Sign a resolution in support (a delegate who is not a sponsor)",
+    responses=RESOLUTION_ERRORS,
+)
+def sign_resolution(resolution_id: str, req: ResolutionActorRequest) -> ResolutionView:
+    return resolution_service.sign(resolution_id, req.participant_id)
+
+
+@app.post(
+    "/resolution/{resolution_id}/submit",
+    response_model=ResolutionView,
+    tags=["resolutions"],
+    summary="Submit a DRAFT resolution (sponsors only; needs an operative clause); its text is then frozen",
+    responses=RESOLUTION_ERRORS,
+)
+def submit_resolution(resolution_id: str, req: ResolutionActorRequest) -> ResolutionView:
+    return resolution_service.submit(resolution_id, req.participant_id)
+
+
+@app.post(
+    "/resolution/{resolution_id}/review",
+    response_model=ResolutionView,
+    tags=["resolutions"],
+    summary="The chair takes a SUBMITTED resolution under review (no participant needed, like advancing the phase)",
+    responses={404: RESOLUTION_ERRORS[404], 409: RESOLUTION_ERRORS[409]},
+)
+def review_resolution(resolution_id: str) -> ResolutionView:
+    return resolution_service.review(resolution_id)
+
+
+@app.post(
+    "/resolution/{resolution_id}/vote",
+    response_model=VoteResponse,
+    status_code=201,
+    tags=["resolutions"],
+    summary="Vote YES, NO or ABSTAIN for your own country (VOTING phase only; one final vote per country)",
+    responses=RESOLUTION_ERRORS,
+)
+def vote_on_resolution(resolution_id: str, req: VoteRequest) -> VoteResponse:
+    return resolution_service.vote(resolution_id, req.participant_id, req.country_code, req.vote)
+
+
+@app.get(
+    "/conference/{conference_id}/resolutions",
+    response_model=list[ResolutionView],
+    tags=["resolutions"],
+    summary="Resolutions of a conference, oldest first (optionally filtered by status)",
+    responses={404: RESOLUTION_ERRORS[404], 422: RESOLUTION_ERRORS[422]},
+)
+def list_resolutions(
+    conference_id: str,
+    status: Optional[ResolutionStatus] = Query(default=None, description="Only resolutions with this status"),
+) -> list[ResolutionView]:
+    return resolution_service.list_resolutions(conference_id, status)
 
 
 # ---------------------------------------------------------------------------
