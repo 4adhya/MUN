@@ -79,7 +79,7 @@ app = FastAPI(
         "Simulation state is currently held in memory."
     ),
 )
-
+app.include_router(delegates_router)
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",

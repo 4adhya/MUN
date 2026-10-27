@@ -519,17 +519,35 @@ def generate_delegate(
         ensure_ascii=False,
         default=str,
     )
+    
     call = generator or generate_json_text
+    output_schema = OUTPUT_MODELS[kind].model_json_schema()
+
+    prompt = (
+        "Generate a response for the requested Model UN delegate task.\n"
+        "Return exactly one valid JSON object. Do not use Markdown fences.\n"
+        "The JSON must conform exactly to the schema provided below.\n"
+        "Do not add extra fields. Use the correct types for every field.\n"
+        "Do not invent facts absent from the supplied context.\n\n"
+        "REQUIRED JSON SCHEMA:\n"
+        f"{json.dumps(output_schema, ensure_ascii=False)}\n\n"
+        "CONFERENCE CONTEXT:\n"
+        f"{context_json}"
+    )
 
     try:
         raw = call(
             SYSTEM_PROMPTS[kind],
-            f"Return only JSON for the required schema. Context:\n{context_json}",
+            prompt,
             country=context["country"]["name"],
         )
 
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError("AI returned an empty response")
+
         parsed = json.loads(raw)
         output = OUTPUT_MODELS[kind].model_validate(parsed)
+
 
         if (
             kind is DelegateKind.SPEECH
@@ -596,8 +614,8 @@ def generate_delegate(
     except HTTPException:
         raise
     except Exception as exc:
-        # Never log provider exception text, which may contain sensitive data.
-        logger.warning(
+        # Avoid logging provider exception text, which may contain sensitive data.
+        logger.exception(
             "delegate generation failed kind=%s error_type=%s",
             kind.value,
             type(exc).__name__,
@@ -609,8 +627,7 @@ def generate_delegate(
                 "status": "AI_REQUEST_FAILED",
                 "kind": kind.value,
                 "error": (
-                    "AI generation failed or returned invalid structured output; "
-                    "no advice was accepted."
+                    f"{type(exc).__name__}: {str(exc)[:500]}"
                 ),
             },
         ) from None
