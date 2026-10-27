@@ -17,7 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Any, Literal, Optional
-
+from ai.delegates import router as delegates_router
 from pydantic import BaseModel, Field
 
 AI_DIR = Path(__file__).resolve().parent.parent / "ai"
