@@ -5,6 +5,10 @@ Each conference owns its participants and, once started, its OWN copy of the geo
 or with the sandbox world behind `/world` and `/actions/*`. Country seats come from that world's
 existing country data; there is no second country list.
 
+Country seats are validated against the existing country registry (`country_registry`): a delegate may ask
+for a seat by name, slug or ISO code, which must resolve to a country of the simulation and must not already
+be held by another participant. Delegates who ask for nothing are seated automatically when the conference starts.
+
 Nothing here handles speeches, voting, phase transitions or persistence (later phases).
 """
 from __future__ import annotations
@@ -21,6 +25,7 @@ from .conference_schemas import (
     ConferenceWorldView,
     ParticipantView,
 )
+from .country_registry import find_world_country, resolve_country
 from .models import Country, DiplomacyEvent, WorldState
 from .mun import (
     Committee,
@@ -56,6 +61,24 @@ class ConferenceRecord:
     world: Optional[WorldState] = None
 
 
+def resolve_seat(identifier: str) -> Country:
+    """The simulated country a delegate asked for, resolved through the country registry.
+
+    Accepts any identifier the registry understands (name, slug, ISO alpha-2/alpha-3/numeric code, any case).
+    Raises InvalidRequestError (422) if it is not a country at all, or a real country this simulation does not seat.
+    """
+    seat_world = create_initial_world()
+    country = find_world_country(seat_world, identifier)
+    if country is not None and country.country_code:
+        return country
+    if resolve_country(identifier) is not None:
+        available = ", ".join(c.name for c in seat_world.countries if c.country_code)
+        raise InvalidRequestError(
+            f"Country '{identifier}' is not available in this simulation. Available countries: {available}"
+        )
+    raise InvalidRequestError(f"Unknown country '{identifier}': it is not a recognised country")
+
+
 def assign_countries(participants: list[Participant], countries: list[Country]) -> list[Participant]:
     """Seat every PARTICIPANT without a country, deterministically.
 
@@ -67,6 +90,12 @@ def assign_countries(participants: list[Participant], countries: list[Country]) 
     held = [p.country_code for p in participants if p.country_code]
     if len(held) != len(set(held)):
         raise ConflictError("Duplicate country assignment: two participants already hold the same country")
+    seat_codes = {c.country_code for c in seats}
+    invalid = sorted(code for code in held if code not in seat_codes)
+    if invalid:  # a held seat must be a country of this world; never start with an unknown one
+        raise InvalidRequestError(
+            f"Invalid country assignment: {', '.join(invalid)} is not a country of this simulation"
+        )
 
     free = [c for c in seats if c.country_code not in set(held)]
     needing = [p for p in participants if p.role is ParticipantRole.PARTICIPANT and not p.country_code]
@@ -112,7 +141,13 @@ class ConferenceService:
     @staticmethod
     def _snapshot(record: ConferenceRecord) -> ConferenceSnapshot:
         conference, world = record.conference, record.world
-        countries = {c.country_code: c for c in world.countries if c.country_code} if world else {}
+        if world is not None:
+            seat_countries = world.countries
+        elif any(p.country_code for p in record.participants):
+            seat_countries = create_initial_world().countries  # seats already requested, before the world exists
+        else:
+            seat_countries = []
+        countries = {c.country_code: c for c in seat_countries if c.country_code}
 
         participants = []
         assigned = []
@@ -186,7 +221,7 @@ class ConferenceService:
             self._records[conference.id] = record
             return self._snapshot(record)
 
-    def join(self, conference_id: str, name: str, role: str) -> Participant:
+    def join(self, conference_id: str, name: str, role: str, country: Optional[str] = None) -> Participant:
         with self._lock:
             record = self._get(conference_id)
             self._require_waiting(record, "join")
@@ -197,6 +232,16 @@ class ConferenceService:
                 valid = ", ".join(r.value for r in ParticipantRole)
                 raise InvalidRequestError(f"Invalid role '{role}'. Valid roles: {valid}") from None
 
+            seat: Optional[Country] = None
+            if country is not None:
+                if role_enum is not ParticipantRole.PARTICIPANT:
+                    raise InvalidRequestError(
+                        f"Only PARTICIPANT delegates can request a country; {role_enum.value} has no seat"
+                    )
+                seat = resolve_seat(country)
+                if any(p.country_code == seat.country_code for p in record.participants):
+                    raise ConflictError(f"{seat.name} is already assigned to another participant in this conference")
+
             limit = record.config.max_delegates
             is_delegate = role_enum is ParticipantRole.PARTICIPANT
             same_kind = sum(1 for p in record.participants if (p.role is ParticipantRole.PARTICIPANT) == is_delegate)
@@ -206,7 +251,12 @@ class ConferenceService:
                     f"Participant limit reached: {record.conference.committee.value} allows at most {limit} {kind}s"
                 )
 
-            participant = Participant(name=name, role=role_enum, conference_id=conference_id)
+            participant = Participant(
+                name=name,
+                role=role_enum,
+                conference_id=conference_id,
+                country_code=seat.country_code if seat else None,
+            )
             record.participants.append(participant)
             return participant.model_copy(deep=True)
 

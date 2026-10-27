@@ -2,12 +2,19 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.conference_service import assign_countries
+from backend.conference_service import InvalidRequestError, assign_countries
+from backend.country_registry import DEFAULT_DATASET_PATH, _dataset_path
 from backend.countries import build_countries
 from backend.main import app
 from backend.mun import Participant, ParticipantRole
 
 client = TestClient(app)
+
+# ISO alpha-3 codes ("IND", "JPN") need the world-countries dataset (`npm install`); names and alpha-2 codes do not.
+needs_dataset = pytest.mark.skipif(
+    not _dataset_path().exists(),
+    reason=f"world-countries dataset not found ({DEFAULT_DATASET_PATH}); run `npm install`",
+)
 
 # Countries of the existing world, in the order they are seated.
 WORLD_ORDER = [c.country_code for c in build_countries()]
@@ -26,8 +33,11 @@ def create(committee="UNSC", **over):
     return client.post("/conference/create", json=body)
 
 
-def join(conference_id, name="Asha", role="PARTICIPANT"):
-    return client.post(f"/conference/{conference_id}/join", json={"name": name, "role": role})
+def join(conference_id, name="Asha", role="PARTICIPANT", country=None):
+    body = {"name": name, "role": role}
+    if country is not None:
+        body["country"] = country
+    return client.post(f"/conference/{conference_id}/join", json=body)
 
 
 def make_conference(delegates=0, committee="UNSC"):
@@ -322,3 +332,82 @@ def test_completed_conference_cannot_join_or_start():
     for response in (join(conference_id), client.post(f"/conference/{conference_id}/start")):
         assert response.status_code == 409
         assert "already completed" in response.json()["detail"]
+
+
+# --- country seats are validated against the country registry -------------------------------------------
+@pytest.mark.parametrize(
+    "alias", ["India", "india", "IN", " india ", pytest.param("IND", marks=needs_dataset)]
+)
+def test_join_with_a_country_resolves_it_through_the_registry(alias):
+    conference_id = make_conference()
+    response = join(conference_id, country=alias)
+    assert response.status_code == 201
+    assert response.json()["country_code"] == "IN"
+
+    body = client.get(f"/conference/{conference_id}").json()  # visible before the conference starts
+    assert body["participants"][0]["country_code"] == "IN" and body["participants"][0]["country_name"] == "India"
+    assert [a["country_id"] for a in body["assigned_countries"]] == ["india"]
+    assert body["status"] == "WAITING" and body["world"] is None
+
+
+def test_requested_seat_is_honoured_at_start_and_others_fill_the_remaining_seats():
+    conference_id = make_conference()
+    join(conference_id, name="Claude", country="France")
+    join(conference_id, name="Auto")  # no request: first free seat in world order
+    body = client.post(f"/conference/{conference_id}/start").json()
+    by_name = {p["name"]: p["country_code"] for p in body["participants"]}
+    assert by_name["Claude"] == "FR" and by_name["Auto"] == WORLD_ORDER[0]
+    codes = list(by_name.values())
+    assert len(codes) == len(set(codes))
+
+
+def test_a_country_cannot_be_held_by_two_participants():
+    conference_id = make_conference()
+    assert join(conference_id, name="First", country="Japan").status_code == 201
+    aliases = ["japan", "Japan", "JP"] + (["JPN"] if _dataset_path().exists() else [])
+    for alias in aliases:
+        response = join(conference_id, name="Second", country=alias)
+        assert response.status_code == 409
+        assert "already assigned" in response.json()["detail"]
+    assert client.get(f"/conference/{conference_id}").json()["participant_count"] == 1
+
+
+@pytest.mark.parametrize("country", ["atlantis", "wakanda", "ZZZ"])
+def test_unknown_country_is_rejected_and_nobody_joins(country):
+    conference_id = make_conference()
+    response = join(conference_id, country=country)
+    assert response.status_code == 422
+    assert "Unknown country" in response.json()["detail"]
+    assert client.get(f"/conference/{conference_id}").json()["participant_count"] == 0
+
+
+def test_a_real_country_that_is_not_simulated_is_rejected():
+    conference_id = make_conference()
+    response = join(conference_id, country="afghanistan")  # in the dataset (when installed), not seated in this world
+    assert response.status_code == 422
+    assert client.get(f"/conference/{conference_id}").json()["participant_count"] == 0
+
+
+@pytest.mark.parametrize("role", ["GUEST", "JURY"])
+def test_only_delegates_can_request_a_country(role):
+    conference_id = make_conference()
+    response = join(conference_id, role=role, country="India")
+    assert response.status_code == 422
+    assert "Only PARTICIPANT" in response.json()["detail"]
+    assert client.get(f"/conference/{conference_id}").json()["participant_count"] == 0
+
+
+def test_blank_country_is_rejected():
+    assert join(make_conference(), country="  ").status_code == 422
+
+
+def test_requested_seat_failure_does_not_block_the_limit_or_the_conference():
+    conference_id = make_conference(delegates=1)
+    assert join(conference_id, name="Bad", country="atlantis").status_code == 422
+    assert client.post(f"/conference/{conference_id}/start").status_code == 200
+
+
+def test_assign_countries_rejects_a_seat_that_is_not_in_the_world():
+    held = Participant(name="A", role=ParticipantRole.PARTICIPANT, conference_id="c", country_code="ZZ")
+    with pytest.raises(InvalidRequestError, match="Invalid country assignment"):
+        assign_countries([held], build_countries())

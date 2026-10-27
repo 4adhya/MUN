@@ -222,11 +222,11 @@ def create_conference(req: ConferenceCreateRequest) -> ConferenceSnapshot:
     response_model=Participant,
     status_code=201,
     tags=["conference"],
-    summary="Join a WAITING conference",
+    summary="Join a WAITING conference (optionally requesting a country seat)",
     responses=CONFERENCE_ERRORS,
 )
 def join_conference(conference_id: str, req: JoinConferenceRequest) -> Participant:
-    return conference_service.join(conference_id, req.name, req.role)
+    return conference_service.join(conference_id, req.name, req.role, req.country)
 
 
 @app.get(

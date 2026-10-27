@@ -28,6 +28,15 @@ class JoinConferenceRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=100, description="Participant name")
     role: str = Field(min_length=1, max_length=32, description="GUEST, PARTICIPANT or JURY")
+    country: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description=(
+            "Optional seat request for a PARTICIPANT: a country name, slug or ISO code ('India', 'IND', 'IN'), "
+            "validated against the country registry. Omit it to be seated automatically when the conference starts."
+        ),
+    )
 
 
 # --- Responses --------------------------------------------------------------------------------
