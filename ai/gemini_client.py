@@ -61,23 +61,23 @@ from ai.check_gemini import (
 
 logger = logging.getLogger("mun.ai.gemini")
 
-GEMMA_PREFIX = "gemma-"  # the hackathon requires a Gemma model; anything else is refused, never silently used
+ALLOWED_MODEL_PREFIXES = ("gemma-", "gemini-")  # explicitly configured Gemini API models only
 
 TEMPERATURE = 0.5  # low: we want consistent, sensible decisions rather than creative ones
 JSON_MIME_TYPE = "application/json"
 
 # --- retry / concurrency policy -------------------------------------------------------------
-MAX_RETRIES = 2  # retries after the first attempt on the primary model (3 attempts in total)
+MAX_RETRIES = 1  # fast failure: one retry maximum
 BASE_DELAY_SECONDS = 1.0
 MAX_DELAY_SECONDS = 8.0
-TOTAL_BUDGET_SECONDS = 55.0  # whole call; the frontend gives up at 60 s
+TOTAL_BUDGET_SECONDS = 35.0  # bound slow upstream requests; frontend timeout is 70 s
 MIN_ATTEMPT_SECONDS = 10.0  # the Gemini API rejects any request deadline under 10 s (HTTP 400), so never start an
 #                            attempt with less than this left in the budget
-ATTEMPT_TIMEOUT_SECONDS = 25.0  # one attempt never waits longer than this, so a stuck call leaves time for a retry
+ATTEMPT_TIMEOUT_SECONDS = 15.0  # fail stalled attempts earlier
 ATTEMPT_TIMEOUT_ENV = "GEMINI_ATTEMPT_TIMEOUT_SECONDS"
 THINKING_LEVEL_ENV = "GEMINI_THINKING_LEVEL"
 DEFAULT_THINKING_LEVEL = "minimal"  # Gemma 4: "minimal" = thinking off, "high" = thinking on (low/medium are rejected)
-DEFAULT_MAX_CONCURRENT_CALLS = 6  # the council asks up to ~8 agents at once; a tight cap queues the last ones past the 60 s UI timeout
+DEFAULT_MAX_CONCURRENT_CALLS = 3  # council uses two slots, leaving one for the advisor
 RETRYABLE_HTTP_STATUSES = frozenset({500, 502, 503, 504})
 FALLBACK_MODEL_ENV = "GEMINI_FALLBACK_MODEL"
 MAX_CONCURRENCY_ENV = "GEMINI_MAX_CONCURRENCY"
@@ -178,7 +178,7 @@ def _build_config(system_instruction: str, timeout_ms: Optional[int] = None, jso
         system_instruction=system_instruction,
         response_mime_type=JSON_MIME_TYPE if json_mode else None,  # None: plain-text reply (advisor chat)
         temperature=0.5,
-        max_output_tokens=512,  # was 400: Gemma hit MAX_TOKENS before finishing the JSON,
+        max_output_tokens=2048 if json_mode else 1024,  # leave room for complete JSON and advisor replies
         thinking_config=_thinking_config(model) if use_thinking else None,  # thinking off for Gemma 4: it was the main source of delay
         http_options=http_options,
     )
@@ -204,11 +204,9 @@ def resolve_model() -> str:
     """
     load_env_file(REPO_ROOT / ".env")  # real environment variables still win
     model = os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
-    if not model.lower().startswith(GEMMA_PREFIX):
+    if not model.lower().startswith(ALLOWED_MODEL_PREFIXES):
         raise CheckError(
-            f"GEMINI_MODEL is '{model}', which is not a Gemma model. This project must use Gemma through the "
-            f"Gemini API (default: {DEFAULT_MODEL}). Remove GEMINI_MODEL from your environment/.env or set it "
-            f"to a gemma-* model.",
+            f"Unsupported GEMINI_MODEL '{model}'. Set a gemma-* or gemini-* model available to your API key.",
             EXIT_CONFIG,
         )
     return model
@@ -223,8 +221,8 @@ def resolve_fallback_model(primary: str) -> Optional[str]:
     model = os.environ.get(FALLBACK_MODEL_ENV, "").strip()
     if not model or model == primary:
         return None
-    if not model.lower().startswith(GEMMA_PREFIX):
-        logger.warning("Ignoring %s: it is not a gemma-* model", FALLBACK_MODEL_ENV)
+    if not model.lower().startswith(ALLOWED_MODEL_PREFIXES):
+        logger.warning("Ignoring %s: unsupported model prefix", FALLBACK_MODEL_ENV)
         return None
     return model
 

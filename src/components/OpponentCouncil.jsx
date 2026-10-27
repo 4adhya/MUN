@@ -151,8 +151,11 @@ export default function OpponentCouncil({ country, onActionComplete }) {
 
     setProposals(initial);
 
-    await Promise.all(
-      opponents.map(async (opponent) => {
+    // Run two opponents at a time, leaving a backend slot for the advisor.
+    const queue = [...opponents];
+    const worker = async () => {
+      while (queue.length) {
+        const opponent = queue.shift();
         try {
           const response = await proposeAI(opponent.id, situation.trim());
           const decision = getDecision(response);
@@ -178,8 +181,9 @@ export default function OpponentCouncil({ country, onActionComplete }) {
             },
           }));
         }
-      })
-    );
+      }
+    };
+    await Promise.all([worker(), worker()]);
 
     setLoading(false);
   }
