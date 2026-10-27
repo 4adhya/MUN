@@ -13,6 +13,14 @@
   font-weight: 400;
   scroll-behavior: smooth;
   color-scheme: dark;
+
+  --bg-primary: #061120;
+  --bg-card: #091a2c;
+  --border-color: #1d3d59;
+  --accent-blue: #168cff;
+  --accent-cyan: #42c7f5;
+  --text-primary: #e5efff;
+  --text-muted: #829bb5;
 }
 
 * {
@@ -29,14 +37,21 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #061120;
+  background: var(--bg-primary);
 }
 
-body, button, input, select, textarea {
+body,
+button,
+input,
+select,
+textarea {
   font-family: 'DM Sans', sans-serif;
 }
 
-button, input, select, textarea {
+button,
+input,
+select,
+textarea {
   font-size: inherit;
 }
 
@@ -47,14 +62,15 @@ button {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-select:focus-visible {
-  outline: 2px solid #42c7f5;
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-cyan);
   outline-offset: 3px;
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: .55;
+  opacity: 0.55;
 }
 
 a {
@@ -62,7 +78,9 @@ a {
   text-decoration: none;
 }
 
-img, svg, canvas {
+img,
+svg,
+canvas {
   max-width: 100%;
 }
 
@@ -76,13 +94,142 @@ img, svg, canvas {
   isolation: isolate;
 }
 
+/* ---------------------------------
+   PROCESS CARDS — BASE APPEARANCE
+---------------------------------- */
+
+.process-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(55, 164, 255, 0.24);
+  border-radius: 16px;
+
+  background: linear-gradient(
+    145deg,
+    rgba(15, 38, 61, 0.96),
+    rgba(7, 22, 39, 0.98)
+  );
+
+  transition:
+    transform 300ms ease,
+    border-color 300ms ease,
+    box-shadow 300ms ease,
+    background 300ms ease;
+}
+
+/* Soft blue light inside the card */
+
+.process-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(0, 183, 255, 0.22),
+    transparent 70%
+  );
+
+  opacity: 0.3;
+  transition: opacity 300ms ease;
+}
+
+/* Glow beneath the card */
+
+.process-card::after {
+  content: '';
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: -22px;
+  height: 35px;
+  z-index: -1;
+  pointer-events: none;
+
+  background: #08aaff;
+  filter: blur(28px);
+  opacity: 0;
+
+  transition: opacity 300ms ease;
+}
+
+/* Hover glow */
+
+.process-card:hover {
+  transform: translateY(-7px);
+
+  border-color: rgba(48, 195, 255, 0.85);
+
+  background: linear-gradient(
+    145deg,
+    rgba(16, 48, 75, 0.98),
+    rgba(7, 25, 44, 0.99)
+  );
+
+  box-shadow:
+    0 0 15px rgba(0, 174, 255, 0.15),
+    0 0 35px rgba(0, 153, 255, 0.12),
+    inset 0 0 22px rgba(0, 174, 255, 0.06);
+}
+
+.process-card:hover::before {
+  opacity: 1;
+}
+
+.process-card:hover::after {
+  opacity: 0.65;
+}
+
+/* Keyboard accessibility */
+
+.process-card:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 4px;
+
+  border-color: var(--accent-cyan);
+
+  box-shadow:
+    0 0 18px rgba(66, 199, 245, 0.2);
+}
+
+/* Optional cyan heading accent */
+
+.process-card h3 {
+  transition: color 250ms ease;
+}
+
+.process-card:hover h3 {
+  color: #75d9ff;
+}
+
+/* ---------------------------------
+   RESPONSIVE LAYOUT
+---------------------------------- */
+
+@media (max-width: 768px) {
+  .process-card:hover {
+    transform: translateY(-3px);
+  }
+}
+
+/* ---------------------------------
+   REDUCED MOTION ACCESSIBILITY
+---------------------------------- */
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    animation-duration: .01ms !important;
+    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .process-card:hover {
+    transform: none;
   }
 }
