@@ -2455,3 +2455,123 @@
     transform: none;
   }
 }
+
+
+/* ================================================================
+   GLOBAL TYPOGRAPHY OVERRIDE
+   Only typography is standardized here; all existing layout,
+   colors, spacing, components, and responsive behavior are preserved.
+   ================================================================ */
+
+:root {
+  --app-font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-xs: 12px;
+  --font-sm: 14px;
+  --font-base: 15px;
+  --font-lg: 18px;
+  --font-xl: 22px;
+  --font-2xl: 28px;
+  --font-3xl: 34px;
+}
+
+.politica-app,
+.politica-app *,
+.politica-app *::before,
+.politica-app *::after {
+  font-family: var(--app-font) !important;
+  box-sizing: border-box;
+}
+
+.politica-app h1 {
+  font-size: var(--font-3xl) !important;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.politica-app h2 {
+  font-size: var(--font-2xl) !important;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.politica-app h3 {
+  font-size: var(--font-lg) !important;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.politica-app h4,
+.politica-app h5,
+.politica-app h6 {
+  font-size: var(--font-base) !important;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.politica-app p,
+.politica-app li,
+.politica-app label,
+.politica-app td,
+.politica-app th {
+  font-size: var(--font-base);
+  line-height: 1.6;
+}
+
+.politica-app button,
+.politica-app input,
+.politica-app select,
+.politica-app textarea {
+  font-family: var(--app-font) !important;
+  font-size: var(--font-sm) !important;
+  line-height: 1.5;
+}
+
+.politica-app button {
+  font-weight: 600;
+}
+
+.politica-app input,
+.politica-app select,
+.politica-app textarea {
+  font-weight: 400;
+}
+
+.politica-app small,
+.politica-app .eyebrow,
+.politica-app .di-eyebrow {
+  font-size: var(--font-xs) !important;
+  line-height: 1.5;
+}
+
+.politica-app .sidebar button,
+.politica-app .sidebar a,
+.politica-app .nav-item,
+.politica-app .side-nav button {
+  font-size: var(--font-sm) !important;
+}
+
+.politica-app table,
+.politica-app .indicator-row,
+.politica-app .metric-card {
+  font-size: var(--font-sm);
+}
+
+@media (max-width: 768px) {
+  .politica-app h1 {
+    font-size: 28px !important;
+  }
+
+  .politica-app h2 {
+    font-size: 23px !important;
+  }
+
+  .politica-app h3 {
+    font-size: 17px !important;
+  }
+
+  .politica-app p,
+  .politica-app li,
+  .politica-app label {
+    font-size: 14px;
+  }
+}
