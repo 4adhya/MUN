@@ -27,6 +27,29 @@ const initialEvents = [
   { type: "alert", category: "important", title: "Sanctions review", detail: "Review the possible economic and diplomatic consequences of proposed restrictions.", time: "Turn 01", countries: "Countries named in the proposal", status: "High priority" },
 ];
 
+const COUNTRY_BRIEFINGS = {
+  Brazil: {
+    overview:
+      "Brazil is Latin America’s largest country and a major agricultural, commodity, industrial and services economy. Its vast territory includes much of the Amazon rainforest, making land use, biodiversity and climate policy globally important.",
+    sanctionsTitle: "Recent trade restriction: United States (2026)",
+    sanctions:
+      "On 15 July 2026, the U.S. Trade Representative announced a 25% tariff on certain Brazilian goods under Section 301 after an investigation into several trade and policy issues. This is a targeted tariff/trade measure, not a blanket international sanctions regime against Brazil.",
+    sanctionsImpact:
+      "Potential areas of impact include affected exporters, prices and competitiveness in the U.S. market, and bilateral trade negotiations. The measure applies to specified goods; check the official order for product coverage and any later changes.",
+    points: [
+      "Capital: Brasília · Official language: Portuguese · Currency: Brazilian real (BRL).",
+      "Major strengths: agriculture, iron ore, oil, manufacturing, renewable electricity and a large domestic market.",
+      "Key policy challenges: inequality, productivity and infrastructure gaps, fiscal pressures, and protecting the Amazon and other ecosystems.",
+      "Diplomatic priorities: preserve market access, diversify trade partners, support sustainable development and negotiate trade disputes.",
+    ],
+    sourceLabel: "Sources: World Bank country overview; U.S. Trade Representative, 15 July 2026.",
+    sourceLinks: [
+      { label: "World Bank — Brazil overview", url: "https://www.worldbank.org/ext/en/country/brazil" },
+      { label: "USTR — Section 301 action on Brazil", url: "https://www.ustr.gov/about/policy-offices/press-office/press-releases/2026/july/ustr-section-301-action-brazils-unreasonable-acts-policies-and-practices" },
+    ],
+  },
+};
+
 const tabs = [
   ["conference", "Conference", Landmark],
   ["dashboard", "Dashboard", Activity],
@@ -264,62 +287,6 @@ async function fetchLatestWorldBankIndicator(iso3, indicator, signal) {
 }
 
 
-async function fetchCountryFacts(country, signal) {
-  const fields = "name,capital,population,region,subregion,area,currencies,languages,cca2,cca3";
-  const iso3 = country?.iso3 || "IND";
-  const endpoint = country?.iso3
-    ? `https://restcountries.com/v3.1/alpha/${encodeURIComponent(country.iso3)}?fields=${fields}`
-    : `https://restcountries.com/v3.1/name/${encodeURIComponent(country?.name || "India")}?fields=${fields}`;
-
-  // REST Countries supplies the descriptive facts. If population/area are missing
-  // or the service is temporarily unavailable, fall back to the World Bank indicators.
-  let record = null;
-  try {
-    const response = await fetch(endpoint, { signal });
-    if (response.ok) {
-      const payload = await response.json();
-      record = Array.isArray(payload) ? payload[0] : payload;
-    }
-  } catch (error) {
-    if (signal?.aborted) throw error;
-  }
-
-  const [populationResult, areaResult] = await Promise.allSettled([
-    fetchLatestWorldBankIndicator(iso3, "SP.POP.TOTL", signal),
-    fetchLatestWorldBankIndicator(iso3, "AG.SRF.TOTL.K2", signal),
-  ]);
-  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-
-  const currencies = Object.values(record?.currencies || {});
-  const languages = Object.values(record?.languages || {});
-  const worldBankPopulation = populationResult.status === "fulfilled" ? populationResult.value?.value : null;
-  const worldBankArea = areaResult.status === "fulfilled" ? areaResult.value?.value : null;
-
-  return {
-    name: record?.name?.common || country?.name,
-    capital: Array.isArray(record?.capital) ? record.capital.join(", ") : "",
-    population: Number.isFinite(Number(record?.population)) ? Number(record.population) : (worldBankPopulation != null ? Number(worldBankPopulation) : null),
-    populationYear: populationResult.status === "fulfilled" ? populationResult.value?.year : null,
-    region: record?.region || country?.region || "",
-    subregion: record?.subregion || country?.subregion || "",
-    area: Number.isFinite(Number(record?.area)) ? Number(record.area) : (worldBankArea != null ? Number(worldBankArea) : null),
-    areaYear: areaResult.status === "fulfilled" ? areaResult.value?.year : null,
-    currency: currencies.map((item) => item.name && item.symbol ? `${item.name} (${item.symbol})` : item.name || item.symbol).filter(Boolean).join(", "),
-    languages: languages.join(", "),
-  };
-}
-
-function formatPopulation(value) {
-  if (!Number.isFinite(Number(value))) return "Loading…";
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value));
-}
-
-function formatArea(value) {
-  if (!Number.isFinite(Number(value))) return "Loading…";
-  return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value))} km²`;
-}
-
-
 const COUNTRY_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#a78bfa", "#fb7185", "#38bdf8"];
 
 function flagEmojiFromCode(code = "") {
@@ -402,8 +369,6 @@ export default function App() {
     militarySpending: null,
     loading: false,
   });
-  const [liveCountryFacts, setLiveCountryFacts] = useState(null);
-  const [liveCountryFactsLoading, setLiveCountryFactsLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -425,24 +390,6 @@ export default function App() {
       });
     return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    const selected = countryList.find((item) => item.name === countryName) || { name: countryName };
-    const controller = new AbortController();
-    setLiveCountryFacts(null);
-    setLiveCountryFactsLoading(true);
-    fetchCountryFacts(selected, controller.signal)
-      .then((facts) => {
-        if (!controller.signal.aborted) setLiveCountryFacts(facts);
-      })
-      .catch(() => {
-        // Keep the bundled country profile as a fallback if the facts API is temporarily unavailable.
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLiveCountryFactsLoading(false);
-      });
-    return () => controller.abort();
-  }, [countryName, countryList]);
 
   useEffect(() => {
     const iso3 = countryList.find((item) => item.name === countryName)?.iso3;
@@ -495,17 +442,6 @@ export default function App() {
     color: "#38bdf8",
     gdp: "Not available",
     role: "Country profile",
-  };
-  const countryFacts = {
-    ...country,
-    ...(liveCountryFacts || {}),
-    capital: liveCountryFacts?.capital || country.capital,
-    populationValue: liveCountryFacts?.population ?? country.populationValue,
-    region: liveCountryFacts?.region || country.region,
-    subregion: liveCountryFacts?.subregion || country.subregion,
-    currency: liveCountryFacts?.currency || country.currency,
-    languages: liveCountryFacts?.languages || country.languages,
-    areaValue: liveCountryFacts?.area ?? (Number.isFinite(Number(country.area)) ? Number(String(country.area).replace(/[^0-9.]/g, "")) : null),
   };
   const targetCountry = countryList.find((c) => c.name === target) || countryList.find((c) => c.name !== country.name) || countryList[0] || country;
   const filteredCountries = countryList.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.officialName?.toLowerCase().includes(query.toLowerCase()));
@@ -770,13 +706,13 @@ export default function App() {
                 <div className="explore-flag">{country.flag}</div>
                 <h3>{country.name}</h3>
                 <p>{country.role}</p>
-                <div className="explore-stat"><span>Capital</span><b>{countryFacts.capital || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
-                <div className="explore-stat"><span>Population</span><b>{countryFacts.populationValue != null ? formatPopulation(countryFacts.populationValue) : (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
-                <div className="explore-stat"><span>Region</span><b>{countryFacts.subregion || countryFacts.region || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
-                <div className="explore-stat"><span>Currency</span><b>{countryFacts.currency || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
-                <div className="explore-stat"><span>Languages</span><b>{countryFacts.languages || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
-                <div className="explore-stat"><span>Area</span><b>{countryFacts.areaValue != null ? formatArea(countryFacts.areaValue) : (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
-                <div className="explore-stat"><span>GDP (nominal)</span><b>{countryIndicators.loading ? "Loading…" : countryIndicators.gdp ? `${formatGDP(countryIndicators.gdp.value)} · ${countryIndicators.gdp.year}` : "No World Bank figure"}</b></div>
+                <div className="explore-stat"><span>Capital</span><b>{country.capital || "Not available"}</b></div>
+                <div className="explore-stat"><span>Population</span><b>{country.population || "Not available"}</b></div>
+                <div className="explore-stat"><span>Region</span><b>{country.subregion || country.region || "Not available"}</b></div>
+                <div className="explore-stat"><span>Currency</span><b>{country.currency || "Not available"}</b></div>
+                <div className="explore-stat"><span>Languages</span><b>{country.languages || "Not available"}</b></div>
+                <div className="explore-stat"><span>Area</span><b>{country.area || "Not available"}</b></div>
+                <div className="explore-stat"><span>Economic position</span><b>{country.economy}</b></div>
                 <div className="explore-stat"><span>Stability index</span><b>{country.stability}/100</b></div>
                 <MiniBars value={country.stability} color="green" />
                 <button className="button explore-select-button" onClick={openGame}>Represent {country.name} <ArrowRight size={16} /></button>
@@ -843,7 +779,7 @@ export default function App() {
             {tabs.map(([id, label, Icon]) => <button key={id} className={`side-link ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}><Icon size={17} />{label}{id === "events" && <span className="side-count">{events.length}</span>}</button>)}
             <div className="sidebar-bottom"><span className="live-indicator" /><span><b>Simulation active</b><small>Turn {String(turn).padStart(2, "0")} · Practice mode</small></span></div>
           </aside>
-          <main className="game-main">
+          <main className="game-main" key={tab}>
             <div className="game-topline"><div><span className="eyebrow">GLOBAL AFFAIRS / SIMULATION</span><h1>{tabs.find((t) => t[0] === tab)?.[1]}</h1><p>Monitor the world. Understand your position. Choose your next move.</p></div><div className="topline-actions"><span className="turn-badge"><Clock3 size={14} /> TURN {String(turn).padStart(2, "0")}</span><button className="icon-button" onClick={() => setShowAdvisor(!showAdvisor)} title="Toggle advisor"><MessageSquare size={17} /></button></div></div>
             {tab === "conference" && (
   <ConferenceRoom
@@ -894,7 +830,52 @@ export default function App() {
   height={520}
 /></section>}
 
-            {tab === "countries" && <section className="panel"><div className="panel-heading"><div><h2>Country intelligence</h2><p>Explore national profiles and strategic positions.</p></div><label className="search-box compact"><Search size={16} /><input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div><div className="profile-detail"><span className="flag flag-large">{country.flag}</span><div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2><p>{country.capital} · {country.population} people · GDP {country.gdp}</p></div><span className="status-chip">{country.role}</span></div></section>}
+            {tab === "countries" && (() => {
+              const briefing = COUNTRY_BRIEFINGS[country.name];
+              const glowHeadingStyle = {
+                margin: "0 0 10px",
+                fontSize: 18,
+                fontWeight: 700,
+                color: "#dff5ff",
+                textShadow: "0 0 7px rgba(76, 200, 245, 0.8), 0 0 18px rgba(76, 200, 245, 0.35)",
+              };
+              const bodyStyle = { margin: "0 0 20px", color: "#9db2c8", lineHeight: 1.85, fontSize: 14 };
+              return <section className="panel">
+                <div className="panel-heading">
+                  <div><h2>Country intelligence</h2><p>Country profile, historical restrictions, and key strategic points.</p></div>
+                  <label className="search-box compact"><Search size={16} /><input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+                </div>
+                <div className="profile-detail">
+                  <span className="flag flag-large">{country.flag}</span>
+                  <div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2>
+                    <p>{country.capital || "Capital not available"} · {country.population || "Population not available"} people · GDP {country.gdp || "not available"}</p>
+                  </div>
+                  <span className="status-chip">{country.role}</span>
+                </div>
+                <div style={{ marginTop: 24 }}>
+                  <h3 style={glowHeadingStyle}>Country overview</h3>
+                  <p style={bodyStyle}>
+                    {briefing?.overview || `${country.name} is in ${country.subregion || country.region || "an unclassified region"}. Its capital is ${country.capital || "not available"}, and its population is ${country.population || "not available"}. The country covers ${country.area || "an area not available"} and uses ${country.currency || "a currency not available"} as its currency. Its main language information is ${country.languages || "not available"}, and its economy is described as ${country.economy || "not rated"}. These details help explain its national priorities and diplomatic position.`}
+                    {briefing ? ` The capital is ${country.capital || "not available"}, the region is ${country.subregion || country.region || "not available"}, the area is ${country.area || "not available"}, the currency is ${country.currency || "not available"}, the languages are ${country.languages || "not available"}, and the economy is ${country.economy || "not rated"}.` : ""}
+                  </p>
+
+                  <h3 style={glowHeadingStyle}>Previous sanctions / trade restrictions</h3>
+                  {briefing ? <p style={bodyStyle}><strong style={{ color: "#f5c879" }}>{briefing.sanctionsTitle}. </strong>{briefing.sanctions} Possible impact: {briefing.sanctionsImpact}</p> : <p style={bodyStyle}>A country-specific sanctions history has not been added to this built-in briefing yet. This does not mean the country has never faced sanctions. Check official government or UN sanctions records before treating a measure as current or comprehensive.</p>}
+                  {briefing?.sourceLinks && <p style={{ ...bodyStyle, marginTop: -8 }}>Sources: {briefing.sourceLinks.map((source, index) => <span key={source.url}>{index > 0 ? " · " : ""}<a href={source.url} target="_blank" rel="noreferrer" style={{ color: "#4cc8f5", fontSize: 12, textDecoration: "none" }}>{source.label} ↗</a></span>)}</p>}
+
+                  <h3 style={glowHeadingStyle}>Main points to remember</h3>
+                  <p style={bodyStyle}>
+                    {(briefing?.points || [
+                      `Diplomatic role: ${country.role || "Use current official sources to assess its role."}`,
+                      `Regional context: ${country.subregion || country.region || "Check the country’s regional relationships."}.`,
+                      "Review trade dependencies, security partnerships, and current UN or regional-organisation activity.",
+                      "Distinguish official sanctions from tariffs, export controls, and proposed measures; their scope and legal effects differ.",
+                    ]).join(" ")}
+                    {briefing?.sourceLabel ? ` ${briefing.sourceLabel}` : ""}
+                  </p>
+                </div>
+              </section>;
+            })()}
 
             {tab === "events" && (() => {
               const eventFilters = [
