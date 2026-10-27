@@ -361,6 +361,59 @@ export default function App() {
   const [showAdvisor, setShowAdvisor] = useState(false);
   const [notice, setNotice] = useState("");
   const [turn, setTurn] = useState(1);
+  // Shared practice-simulation metrics. These are illustrative and update from delegate actions.
+  const initialWorldState = {
+    stability: 72,
+    tension: 41,
+    alliances: 3,
+    actions: 0,
+    economicStrength: 78,
+    militaryCapability: 72,
+    diplomaticInfluence: 68,
+    stabilityHistory: [66, 58, 62, 44, 57, 53, 72, 61, 67, 51],
+  };
+  const [worldState, setWorldState] = useState(initialWorldState);
+
+  function recordWorldAction(kind) {
+    const effects = {
+      sanctions: { stability: -2, tension: 5, economicStrength: -3, militaryCapability: 0, diplomaticInfluence: -2, alliances: 0 },
+      negotiation: { stability: 2, tension: -3, economicStrength: 0, militaryCapability: 0, diplomaticInfluence: 3, alliances: 0 },
+      aid: { stability: 3, tension: -1, economicStrength: 2, militaryCapability: 0, diplomaticInfluence: 2, alliances: 0 },
+      alliance: { stability: 1, tension: -1, economicStrength: 1, militaryCapability: 1, diplomaticInfluence: 3, alliances: 0 },
+    };
+    const effect = effects[kind] || { stability: 0, tension: 0, economicStrength: 0, militaryCapability: 0, diplomaticInfluence: 0, alliances: 0 };
+    setWorldState((previous) => {
+      const stability = Math.max(0, Math.min(100, previous.stability + effect.stability));
+      const tension = Math.max(0, Math.min(100, previous.tension + effect.tension));
+      const clamp = (value) => Math.max(0, Math.min(100, value));
+      return {
+        ...previous,
+        stability,
+        tension,
+        economicStrength: clamp(previous.economicStrength + effect.economicStrength),
+        militaryCapability: clamp(previous.militaryCapability + effect.militaryCapability),
+        diplomaticInfluence: clamp(previous.diplomaticInfluence + effect.diplomaticInfluence),
+        actions: previous.actions + 1,
+        stabilityHistory: [...previous.stabilityHistory, stability].slice(-10),
+      };
+    });
+  }
+
+  function recordResolutionPassed() {
+    setWorldState((previous) => {
+      const stability = Math.min(100, previous.stability + 4);
+      const tension = Math.max(0, previous.tension - 4);
+      return {
+        ...previous,
+        stability,
+        tension,
+        economicStrength: Math.min(100, previous.economicStrength + 2),
+        diplomaticInfluence: Math.min(100, previous.diplomaticInfluence + 2),
+        actions: previous.actions + 1,
+        stabilityHistory: [...previous.stabilityHistory, stability].slice(-10),
+      };
+    });
+  }
   const [countryList, setCountryList] = useState([]);
   const [countryDataLoading, setCountryDataLoading] = useState(true);
   const [countryDataError, setCountryDataError] = useState("");
@@ -498,6 +551,7 @@ export default function App() {
   setScreen("game");
   setTab("conference");
   setTurn(1);
+  setWorldState({ ...initialWorldState, stabilityHistory: [...initialWorldState.stabilityHistory] });
   setActionResult(null);
   setShowAdvisor(false);
   setAdvisorMessages([]);
@@ -563,6 +617,7 @@ export default function App() {
     };
 
     setActionResult(result);
+    recordWorldAction(kind);
     setEvents((old) => [
       {
         type: kind === "sanctions" ? "alert" : "deal",
@@ -611,6 +666,7 @@ export default function App() {
     const description = descriptions[kind] || `${country.name} recorded a diplomatic action involving ${actionTarget}.`;
 
     setTarget(actionTarget);
+    recordWorldAction(kind);
     setActionResult({
       title: names[kind] || "Diplomatic action recorded",
       description,
@@ -640,6 +696,15 @@ export default function App() {
     setTurn((currentTurn) => currentTurn + 1);
     return { message: "Proposal recorded in the practice simulation." };
   }
+
+  const trendCoordinates = worldState.stabilityHistory.map((value, index, values) => ({
+    x: values.length <= 1 ? 250 : (index / (values.length - 1)) * 480 + 10,
+    y: 200 - (value / 100) * 180,
+  }));
+  const trendPolyline = trendCoordinates.map((point) => `${point.x},${point.y}`).join(" ");
+  const trendArea = trendCoordinates.length
+    ? `M${trendCoordinates[0].x} 200 L${trendCoordinates.map((point) => `${point.x} ${point.y}`).join(" L")} L${trendCoordinates[trendCoordinates.length - 1].x} 200 Z`
+    : "M0 200 L500 200 Z";
 
   return (
     <div className="politica-app">
@@ -802,7 +867,7 @@ export default function App() {
   />
 )}
             {tab === "dashboard" && <>
-              <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value="72/100" sub="Illustrative" color="green" /><Metric icon={ZapIcon} label="Global tension" value="41/100" sub="Moderate" color="red" /><Metric icon={Handshake} label="Active alliances" value="03" sub="Across the world" color="purple" /><Metric icon={Target} label="Your influence" value="68/100" sub="Regional standing" color="gold" /></div>
+              <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value={`${worldState.stability}/100`} sub="Practice simulation" color="green" /><Metric icon={ZapIcon} label="Global tension" value={`${worldState.tension}/100`} sub={worldState.tension >= 60 ? "Elevated" : worldState.tension >= 40 ? "Moderate" : "Lower"} color="red" /><Metric icon={Handshake} label="Active alliances" value={String(worldState.alliances).padStart(2, "0")} sub="Confirmed in simulation" color="purple" /><Metric icon={Target} label="Your influence" value={`${Math.max(0, Math.min(100, 68 + worldState.actions))}/100`} sub={`${worldState.actions} recorded actions`} color="gold" /></div>
               <div className="dashboard-grid">
                 <section className="panel map-panel"><div className="panel-heading"><div><h2>Geopolitical overview</h2><p>Country positions and regional activity</p></div><button className="text-link" onClick={() => setTab("map")}>Full map <ArrowRight size={14} /></button></div><WorldMap
   selectedCountry={countryName}
@@ -931,6 +996,7 @@ export default function App() {
                 view={tab}
                 country={country}
                 onResolutionPassed={(result) => {
+                  recordResolutionPassed();
                   setNotice(`Resolution passed: ${result.title}. Living world indicators updated.`);
                   setEvents((old) => [
                     {
@@ -949,8 +1015,8 @@ export default function App() {
             )}
 
             {tab === "analytics" && <>
-              <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value="72/100" color="green" /><Metric icon={TrendingUp} label="Global tension" value="41/100" color="red" /><Metric icon={Handshake} label="Active alliances" value="03" color="purple" /><Metric icon={Target} label="Recorded actions" value={String(turn - 1).padStart(2, "0")} color="gold" /></div>
-              <div className="analytics-grid"><section className="panel"><div className="panel-heading"><div><h2>Stability trend</h2><p>Illustrative values across recent turns</p></div></div><div className="chart"><div className="chart-y"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div><svg viewBox="0 0 500 220" preserveAspectRatio="none"><g className="chart-grid">{[25,65,105,145,185].map((y) => <line key={y} x1="0" y1={y} x2="500" y2={y} />)}</g><path d="M0 70 L55 90 L110 78 L165 115 L220 88 L275 95 L330 60 L385 80 L440 70 L500 100 L500 200 L0 200Z" fill="rgba(56,189,248,.08)" /><polyline points="0,70 55,90 110,78 165,115 220,88 275,95 330,60 385,80 440,70 500,100" fill="none" stroke="#38bdf8" strokeWidth="3" /></svg></div><div className="chart-x"><span>Turn 1</span><span>Turn 3</span><span>Turn 5</span><span>Turn 7</span><span>Turn 10</span></div></section><section className="panel"><div className="panel-heading"><div><h2>National indicators</h2><p>{country.name}</p></div></div>{[["Stability",country.stability],["Economic strength",78],["Military capability",72],["Diplomatic influence",68]].map(([label,value]) => <div className="indicator-row" key={label}><div className="status-line"><span>{label}</span><b>{value}/100</b></div><MiniBars value={value} /></div>)}</section></div>
+              <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value={`${worldState.stability}/100`} color="green" /><Metric icon={TrendingUp} label="Global tension" value={`${worldState.tension}/100`} color="red" /><Metric icon={Handshake} label="Active alliances" value={String(worldState.alliances).padStart(2, "0")} color="purple" /><Metric icon={Target} label="Recorded actions" value={String(worldState.actions).padStart(2, "0")} color="gold" /></div>
+              <div className="analytics-grid"><section className="panel"><div className="panel-heading"><div><h2>Stability trend</h2><p>Updates when actions are recorded or resolutions pass</p></div></div><div className="chart"><div className="chart-y"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div><svg viewBox="0 0 500 220" preserveAspectRatio="none"><g className="chart-grid">{[25,65,105,145,185].map((y) => <line key={y} x1="0" y1={y} x2="500" y2={y} />)}</g><path d={trendArea} fill="rgba(56,189,248,.08)" /><polyline points={trendPolyline} fill="none" stroke="#38bdf8" strokeWidth="3" /></svg></div><div className="chart-x"><span>Recent turns · {worldState.stabilityHistory.length} data points</span><span>Current: {worldState.stability}/100</span></div></section><section className="panel"><div className="panel-heading"><div><h2>National indicators</h2><p>{country.name}</p></div></div>{[["Stability",worldState.stability],["Economic strength",worldState.economicStrength],["Military capability",worldState.militaryCapability],["Diplomatic influence",worldState.diplomaticInfluence]].map(([label,value]) => <div className="indicator-row" key={label}><div className="status-line"><span>{label}</span><b>{value}/100</b></div><MiniBars value={value} /></div>)}</section></div>
             </>}
           </main>
         </div>
