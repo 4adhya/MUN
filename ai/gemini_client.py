@@ -61,13 +61,13 @@ from ai.check_gemini import (
 
 logger = logging.getLogger("mun.ai.gemini")
 
-ALLOWED_MODEL_PREFIXES = ("gemma-", "gemini-")  # explicitly configured Gemini API models only
+ALLOWED_MODEL_PREFIXES = ("gemma-",)  # strict: this app only ever runs Gemma models (via the Gemini API)
 
 TEMPERATURE = 0.5  # low: we want consistent, sensible decisions rather than creative ones
 JSON_MIME_TYPE = "application/json"
 
 # --- retry / concurrency policy -------------------------------------------------------------
-MAX_RETRIES = 1  # fast failure: one retry maximum
+MAX_RETRIES = 2  # 1 first attempt + 2 retries = 3 attempts on the primary model, never more (delays ~1 s, then ~2 s)
 BASE_DELAY_SECONDS = 1.0
 MAX_DELAY_SECONDS = 8.0
 TOTAL_BUDGET_SECONDS = 35.0  # bound slow upstream requests; frontend timeout is 70 s
@@ -206,7 +206,8 @@ def resolve_model() -> str:
     model = os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
     if not model.lower().startswith(ALLOWED_MODEL_PREFIXES):
         raise CheckError(
-            f"Unsupported GEMINI_MODEL '{model}'. Set a gemma-* or gemini-* model available to your API key.",
+            f"GEMINI_MODEL '{model}' is not a Gemma model. This app only runs gemma-* models; "
+            "set GEMINI_MODEL to a Gemma model available to your API key.",
             EXIT_CONFIG,
         )
     return model
@@ -222,7 +223,7 @@ def resolve_fallback_model(primary: str) -> Optional[str]:
     if not model or model == primary:
         return None
     if not model.lower().startswith(ALLOWED_MODEL_PREFIXES):
-        logger.warning("Ignoring %s: unsupported model prefix", FALLBACK_MODEL_ENV)
+        logger.warning("Ignoring %s: it is not a Gemma model", FALLBACK_MODEL_ENV)
         return None
     return model
 

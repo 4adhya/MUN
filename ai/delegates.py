@@ -1,4 +1,3 @@
-
 """Phase 8 MUN delegate agents. All outputs are proposals; the backend remains authoritative."""
 from __future__ import annotations
 
@@ -10,8 +9,9 @@ from typing import Any, Optional, Type
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai.check_gemini import CheckError
 from ai.country_agent import COUNTRY_PROFILES
-from ai.gemini_client import generate_json_text
+from ai.gemini_client import REASON_CONFIG, GeminiRequestError, generate_json_text
 from backend.conference_service import conference_service
 from backend.mun import (
     ConferencePhase,
@@ -393,6 +393,31 @@ def build_context(conference_id: str, country_code: str) -> dict[str, Any]:
     return context
 
 
+def _failure_detail(kind: DelegateKind, exc: Exception) -> dict[str, Any]:
+    """The API body for a failed generation. Machine-readable classification, but never raw exception text.
+
+    A Gemini call failure keeps its stable `reason`, upstream HTTP status and attempt count. A configuration
+    problem (missing key, non-Gemma model) keeps its message, which this code base writes itself and which never
+    contains the key. Anything else (provider or SDK exceptions, malformed output) is reduced to its type name,
+    because its text can carry private provider data or the model's raw output.
+    """
+    detail: dict[str, Any] = {"status": "AI_REQUEST_FAILED", "kind": kind.value}
+    if isinstance(exc, GeminiRequestError):
+        detail.update(
+            reason=exc.reason,
+            upstream_http_status=exc.http_status,
+            attempts=exc.attempts,
+            error=f"AI request failed ({exc.reason}).",
+        )
+    elif isinstance(exc, CheckError):
+        detail.update(reason=REASON_CONFIG, error=exc.message)
+    elif isinstance(exc, ValueError):  # json.JSONDecodeError, pydantic ValidationError, our own output checks
+        detail.update(reason="AI_INVALID_RESPONSE", error=f"The AI returned an invalid response ({type(exc).__name__}).")
+    else:
+        detail.update(reason="GEMINI_UNEXPECTED_ERROR", error=f"Unexpected error generating the response ({type(exc).__name__}).")
+    return detail
+
+
 def generate_delegate(
     kind: DelegateKind | str,
     request: DelegateRequest,
@@ -614,23 +639,18 @@ def generate_delegate(
     except HTTPException:
         raise
     except Exception as exc:
-        # Avoid logging provider exception text, which may contain sensitive data.
-        logger.exception(
-            "delegate generation failed kind=%s error_type=%s",
+        detail = _failure_detail(kind, exc)
+        # Log the classification only: provider exception text may contain private data, so it is never logged
+        # (no traceback either) and never returned.
+        logger.error(
+            "delegate generation failed kind=%s error_type=%s reason=%s upstream_http_status=%s",
             kind.value,
             type(exc).__name__,
+            detail.get("reason", "-"),
+            detail.get("upstream_http_status", "-"),
         )
 
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "status": "AI_REQUEST_FAILED",
-                "kind": kind.value,
-                "error": (
-                    f"{type(exc).__name__}: {str(exc)[:500]}"
-                ),
-            },
-        ) from None
+        raise HTTPException(status_code=502, detail=detail) from None
 
 
 @router.post("/{kind}")
