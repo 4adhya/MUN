@@ -2575,3 +2575,31 @@
     font-size: 14px;
   }
 }
+
+
+/* FIX: prevent the page background from turning white below the app */
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+  background: #061120;
+}
+
+html,
+body {
+  min-height: 100vh;
+}
+
+body {
+  color: #e5effb;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.politica-app {
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 65% 0%, #102949 0%, transparent 45%), #061120;
+}
