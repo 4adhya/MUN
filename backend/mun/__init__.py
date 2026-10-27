@@ -21,10 +21,12 @@ from .phases import (
     next_phase,
     phase_deadline,
 )
+from .speeches import MAX_SPEECH_CHARS, NoSpeakersRemainingError, SpeakerState, Speech, open_floor, pass_floor
 
 __all__ = [
     "COMMITTEE_CONFIGS",
     "COMPLETED_STEP",
+    "MAX_SPEECH_CHARS",
     "PHASE_ACTIONS",
     "PHASE_DURATION_SECONDS",
     "PHASE_ORDER",
@@ -37,13 +39,18 @@ __all__ = [
     "ConferencePhase",
     "ConferenceStatus",
     "MUNWorldMetrics",
+    "NoSpeakersRemainingError",
     "Participant",
     "ParticipantRole",
+    "SpeakerState",
+    "Speech",
     "UnknownCommitteeError",
     "allowed_actions",
     "check_transition",
     "get_committee_config",
     "is_action_allowed",
     "next_phase",
+    "open_floor",
+    "pass_floor",
     "phase_deadline",
 ]

@@ -49,11 +49,12 @@ from .models import (
     SanctionRequest,
     WorldState,
 )
-from .mun import Participant
+from .mun import ConferencePhase, Participant, Speech
 from .report_schemas import SimulationReport
 from .report_service import build_report
 from .rules import ActionError
 from .simulation import create_initial_world, simulation
+from .speech_schemas import SpeakerQueueView, SpeechSubmitRequest
 
 logger = logging.getLogger("worldevent")
 
@@ -285,6 +286,69 @@ def check_conference_action(conference_id: str, req: ActionCheckRequest) -> Acti
 )
 def get_conference_report(conference_id: str) -> SimulationReport:
     return conference_service.report(conference_id)
+
+
+# ---------------------------------------------------------------------------
+# MUN speeches and the speaker queue (Phase 4)
+# ---------------------------------------------------------------------------
+
+SPEECH_ERRORS = {
+    403: {"model": ErrorResponse, "description": "Participant is not in this conference, cannot speak, or the country does not match."},
+    404: CONFERENCE_ERRORS[404],
+    409: {"model": ErrorResponse, "description": "Conference not ACTIVE, phase does not permit speeches, or not the speaker's turn."},
+    422: {"model": ErrorResponse, "description": "Invalid speech or request."},
+}
+
+
+@app.post(
+    "/conference/{conference_id}/speech",
+    response_model=Speech,
+    status_code=201,
+    tags=["speeches"],
+    summary="Submit a speech (only the delegate holding the floor, only in a phase that permits speeches)",
+    responses=SPEECH_ERRORS,
+)
+def submit_speech(conference_id: str, req: SpeechSubmitRequest) -> Speech:
+    return conference_service.submit_speech(conference_id, req.participant_id, req.country_code, req.text)
+
+
+@app.get(
+    "/conference/{conference_id}/speeches",
+    response_model=list[Speech],
+    tags=["speeches"],
+    summary="Speech history of a conference, oldest first (optionally filtered by phase and/or country)",
+    responses={404: CONFERENCE_ERRORS[404], 422: SPEECH_ERRORS[422]},
+)
+def list_speeches(
+    conference_id: str,
+    phase: Optional[ConferencePhase] = Query(default=None, description="Only speeches given in this phase"),
+    country_code: Optional[str] = Query(
+        default=None, min_length=2, max_length=2, description="Only speeches for this ISO alpha-2 country code"
+    ),
+) -> list[Speech]:
+    return conference_service.get_speeches(conference_id, phase, country_code)
+
+
+@app.get(
+    "/conference/{conference_id}/speakers",
+    response_model=SpeakerQueueView,
+    tags=["speeches"],
+    summary="Speaker queue: who holds the floor, who is waiting, who has spoken",
+    responses={404: CONFERENCE_ERRORS[404]},
+)
+def get_speakers(conference_id: str) -> SpeakerQueueView:
+    return conference_service.get_speakers(conference_id)
+
+
+@app.post(
+    "/conference/{conference_id}/speaker/next",
+    response_model=SpeakerQueueView,
+    tags=["speeches"],
+    summary="End the current speaker's turn and give the floor to the next delegate",
+    responses={404: CONFERENCE_ERRORS[404], 409: SPEECH_ERRORS[409]},
+)
+def next_speaker(conference_id: str) -> SpeakerQueueView:
+    return conference_service.next_speaker(conference_id)
 
 
 # ---------------------------------------------------------------------------

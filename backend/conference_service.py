@@ -12,7 +12,12 @@ be held by another participant. Delegates who ask for nothing are seated automat
 The phase flow, per-phase action permissions and deadlines live in `mun.phases`; the service only applies them.
 The backend owns the authoritative phase: it advances one valid step at a time, never to a phase a client names.
 
-Nothing here handles speeches, negotiations, resolutions, voting, crisis or persistence (later phases).
+Phase 4 adds speeches and the speaker queue. Every conference record keeps its speeches (an append-only history that
+later AI agents can read) and a `SpeakerState`. The queue is rebuilt by the service whenever the conference enters a
+phase, so it can never disagree with the authoritative phase. A speech passes through the `check_action` gate like
+any other phase-restricted action, and emits a `speech_submitted` event into the conference's world.
+
+Nothing here handles negotiations, resolutions, voting, crisis, scoring or persistence (later phases).
 """
 from __future__ import annotations
 
@@ -20,6 +25,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import RLock
 from typing import Optional
+
+from pydantic import ValidationError
 
 from .conference_schemas import (
     ActionCheckResponse,
@@ -50,13 +57,20 @@ from .mun import (
     is_action_allowed,
     next_phase,
     phase_deadline,
+    NoSpeakersRemainingError,
+    SpeakerState,
+    Speech,
+    open_floor,
+    pass_floor,
 )
 from .report_schemas import SimulationReport
 from .report_service import build_report
 from .rules import ActionError, ConflictError, NotFoundError, validate_world
 from .simulation import create_initial_world
+from .speech_schemas import SpeakerEntry, SpeakerQueueView
 
 CONFERENCE_START_EVENT = "conference_start"
+SPEECH_EVENT = "speech_submitted"
 
 
 class InvalidRequestError(ActionError):
@@ -65,12 +79,20 @@ class InvalidRequestError(ActionError):
     status_code = 422
 
 
+class ForbiddenError(ActionError):
+    """The participant is not allowed to do this in this conference (HTTP 403)."""
+
+    status_code = 403
+
+
 @dataclass
 class ConferenceRecord:
     conference: Conference
     config: CommitteeConfig
     participants: list[Participant] = field(default_factory=list)
     world: Optional[WorldState] = None
+    speeches: list[Speech] = field(default_factory=list)  # append-only history; never cleared by phase changes
+    speakers: SpeakerState = field(default_factory=SpeakerState)  # rebuilt on every phase change
 
 
 def resolve_seat(identifier: str) -> Country:
@@ -246,6 +268,41 @@ class ConferenceService:
         following = next_phase(record.conference.current_phase, record.config.allowed_phases)
         return following.value if following is not None else COMPLETED_STEP
 
+    @staticmethod
+    def _open_floor(participants: list[Participant], phase: ConferencePhase) -> SpeakerState:
+        """The speaker state for `phase`: every seated delegate, in join order (empty if the phase has no speeches)."""
+        delegates = [p.id for p in participants if p.role is ParticipantRole.PARTICIPANT and p.country_code]
+        return open_floor(phase, delegates)
+
+    @staticmethod
+    def _speaker_entry(record: ConferenceRecord, participant_id: str) -> SpeakerEntry:
+        participant = next(p for p in record.participants if p.id == participant_id)
+        country = None
+        if record.world is not None and participant.country_code:
+            country = next((c for c in record.world.countries if c.country_code == participant.country_code), None)
+        return SpeakerEntry(
+            participant_id=participant.id,
+            participant_name=participant.name,
+            country_code=participant.country_code,
+            country_name=country.name if country else None,
+        )
+
+    @staticmethod
+    def _speaker_view(record: ConferenceRecord) -> SpeakerQueueView:
+        conference, state = record.conference, record.speakers
+        phase_permits = is_action_allowed(conference.current_phase, ActionType.SPEECH)
+        return SpeakerQueueView(
+            conference_id=conference.id,
+            status=conference.status,
+            phase=conference.current_phase,
+            speaking_open=conference.status is ConferenceStatus.ACTIVE and phase_permits,
+            current_speaker=(
+                ConferenceService._speaker_entry(record, state.current) if state.current is not None else None
+            ),
+            queue=[ConferenceService._speaker_entry(record, pid) for pid in state.queue],
+            completed=[ConferenceService._speaker_entry(record, pid) for pid in state.completed],
+        )
+
     # --- operations ----------------------------------------------------------------------------
     def create(self, name: str, committee: str, topic: str) -> ConferenceSnapshot:
         try:
@@ -351,9 +408,12 @@ class ConferenceService:
                 }
             )
 
+            speakers = self._open_floor(seated, conference.current_phase)
+
             record.participants = seated
             record.world = world
             record.conference = conference
+            record.speakers = speakers
             return self._snapshot(record)
 
     def advance(self, conference_id: str, to_phase: Optional[str] = None) -> ConferenceSnapshot:
@@ -391,7 +451,16 @@ class ConferenceService:
                 payload.update(
                     {"current_phase": target, "phase_started_at": now, "phase_ends_at": phase_deadline(target, now)}
                 )
-            record.conference = Conference.model_validate(payload)  # validated before it replaces the old one
+            conference = Conference.model_validate(payload)  # validated before it replaces the old one
+            # The speaker queue follows the phase: rebuilt on entering a speaking phase, emptied otherwise
+            # (including on completion). Computed before anything is committed.
+            speakers = (
+                self._open_floor(record.participants, conference.current_phase)
+                if target is not None
+                else SpeakerState()
+            )
+            record.conference = conference
+            record.speakers = speakers
             return self._snapshot(record)
 
     def check_action(self, conference_id: str, action: str) -> ActionCheckResponse:
@@ -416,6 +485,130 @@ class ConferenceService:
                     f"{action_type.value} is not allowed during {phase.value}. Allowed in this phase: {permitted}"
                 )
             return ActionCheckResponse(conference_id=conference_id, action=action_type.value, phase=phase)
+
+    # --- Phase 4: speeches and the speaker queue -----------------------------------------------
+    def submit_speech(self, conference_id: str, participant_id: str, country_code: str, text: str) -> Speech:
+        """Record a speech by the delegate holding the floor, and emit a `speech_submitted` event.
+
+        Checked in this order; a rejected request stores nothing and emits nothing:
+          404 unknown conference
+          403 the participant is not in this conference, or is not a PARTICIPANT delegate (GUEST/JURY cannot speak)
+          409 the conference is not ACTIVE, or the current phase does not permit SPEECH (the Phase 3 gate)
+          403 `country_code` is not the country the participant was assigned
+          409 the participant does not hold the floor
+          422 the speech itself is invalid (blank, too long)
+        The phase stored on the speech is always the conference's own current phase; clients cannot choose it.
+        """
+        with self._lock:
+            record = self._get(conference_id)
+            participant = next((p for p in record.participants if p.id == participant_id), None)
+            if participant is None or participant.conference_id != conference_id:
+                raise ForbiddenError(f"Participant '{participant_id}' does not belong to conference '{conference_id}'")
+            if participant.role is not ParticipantRole.PARTICIPANT:
+                raise ForbiddenError(
+                    f"{participant.role.value} participants cannot give speeches; only PARTICIPANT delegates can"
+                )
+
+            self.check_action(conference_id, ActionType.SPEECH.value)  # ACTIVE + the phase permits SPEECH
+
+            code = country_code.strip().upper()
+            if participant.country_code != code:
+                raise ForbiddenError(
+                    f"Country mismatch: participant '{participant.id}' represents {participant.country_code}, "
+                    f"not {code}"
+                )
+            if record.speakers.current != participant.id:
+                holder = (
+                    self._speaker_entry(record, record.speakers.current) if record.speakers.current is not None else None
+                )
+                floor = f"{holder.country_name or holder.country_code} ({holder.participant_name})" if holder else "nobody"
+                raise ConflictError(f"It is not your turn to speak: the floor is held by {floor}")
+
+            world = record.world
+            country = next((c for c in world.countries if c.country_code == code), None)
+            if country is None:  # a seated delegate's country always exists in the world; guard anyway
+                raise ConflictError(f"Country {code} is not part of this conference's world")
+
+            now = datetime.now(timezone.utc)
+            phase = record.conference.current_phase
+            try:
+                speech = Speech(
+                    conference_id=conference_id,
+                    participant_id=participant.id,
+                    country_code=code,
+                    text=text,
+                    phase=phase,
+                    created_at=now,
+                )
+            except ValidationError as exc:
+                problems = "; ".join(f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors())
+                raise InvalidRequestError(f"Invalid speech: {problems}") from None
+
+            event = DiplomacyEvent(
+                id=len(world.events) + 1,
+                turn=world.turn,
+                type=SPEECH_EVENT,
+                actor=country.id,
+                target=None,
+                message=f"{country.name} ({participant.name}) delivered a speech during {phase.value}.",
+                timestamp=now,
+                effects={
+                    "conference_id": conference_id,
+                    "speech_id": speech.id,
+                    "participant_id": participant.id,
+                    "country_code": code,
+                    "phase": phase.value,
+                    "characters": len(speech.text),
+                },
+            )
+
+            record.speeches.append(speech)  # nothing below can fail: both commits happen together
+            world.events.append(event)
+            return speech.model_copy(deep=True)
+
+    def get_speeches(
+        self,
+        conference_id: str,
+        phase: Optional[ConferencePhase] = None,
+        country_code: Optional[str] = None,
+    ) -> list[Speech]:
+        """The conference's speech history, oldest first, optionally filtered by phase and/or country.
+
+        Returns copies, so callers (the API, later AI agents) can never alter the stored history. Readable in any
+        conference state, including COMPLETED.
+        """
+        with self._lock:
+            record = self._get(conference_id)
+            code = country_code.strip().upper() if country_code else None
+            return [
+                s.model_copy(deep=True)
+                for s in record.speeches
+                if (phase is None or s.phase is phase) and (code is None or s.country_code == code)
+            ]
+
+    def get_speakers(self, conference_id: str) -> SpeakerQueueView:
+        """Who holds the floor and who is waiting. Always readable; empty when no speaking phase is open."""
+        with self._lock:
+            return self._speaker_view(self._get(conference_id))
+
+    def next_speaker(self, conference_id: str) -> SpeakerQueueView:
+        """End the current speaker's turn and give the floor to the next delegate (the chair's "next speaker").
+
+        404 unknown conference; 409 if the conference is not ACTIVE, the phase has no speaker queue, or every
+        delegate has already had a turn. A rejected request changes nothing.
+        """
+        with self._lock:
+            record = self._get(conference_id)
+            self._require_active(record, "move to the next speaker")
+            phase = record.conference.current_phase
+            if not is_action_allowed(phase, ActionType.SPEECH):
+                raise ConflictError(f"There is no speaker queue during {phase.value}: speeches are not allowed in it")
+            try:
+                new_state = pass_floor(record.speakers)
+            except NoSpeakersRemainingError as exc:
+                raise ConflictError(str(exc)) from None
+            record.speakers = new_state
+            return self._speaker_view(record)
 
     def report(self, conference_id: str) -> SimulationReport:
         """Report on a started conference's own world. Read-only; 409 until the conference has started."""
