@@ -2271,7 +2271,7 @@
 
 /* Soft blue glow behind the title and the globe. */
 .landing #how.how-section::before {
-  content: "";
+    content: "";
   position: absolute;
   z-index: -1;
   width: min(76vw, 900px);

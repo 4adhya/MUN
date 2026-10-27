@@ -264,6 +264,62 @@ async function fetchLatestWorldBankIndicator(iso3, indicator, signal) {
 }
 
 
+async function fetchCountryFacts(country, signal) {
+  const fields = "name,capital,population,region,subregion,area,currencies,languages,cca2,cca3";
+  const iso3 = country?.iso3 || "IND";
+  const endpoint = country?.iso3
+    ? `https://restcountries.com/v3.1/alpha/${encodeURIComponent(country.iso3)}?fields=${fields}`
+    : `https://restcountries.com/v3.1/name/${encodeURIComponent(country?.name || "India")}?fields=${fields}`;
+
+  // REST Countries supplies the descriptive facts. If population/area are missing
+  // or the service is temporarily unavailable, fall back to the World Bank indicators.
+  let record = null;
+  try {
+    const response = await fetch(endpoint, { signal });
+    if (response.ok) {
+      const payload = await response.json();
+      record = Array.isArray(payload) ? payload[0] : payload;
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error;
+  }
+
+  const [populationResult, areaResult] = await Promise.allSettled([
+    fetchLatestWorldBankIndicator(iso3, "SP.POP.TOTL", signal),
+    fetchLatestWorldBankIndicator(iso3, "AG.SRF.TOTL.K2", signal),
+  ]);
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+
+  const currencies = Object.values(record?.currencies || {});
+  const languages = Object.values(record?.languages || {});
+  const worldBankPopulation = populationResult.status === "fulfilled" ? populationResult.value?.value : null;
+  const worldBankArea = areaResult.status === "fulfilled" ? areaResult.value?.value : null;
+
+  return {
+    name: record?.name?.common || country?.name,
+    capital: Array.isArray(record?.capital) ? record.capital.join(", ") : "",
+    population: Number.isFinite(Number(record?.population)) ? Number(record.population) : (worldBankPopulation != null ? Number(worldBankPopulation) : null),
+    populationYear: populationResult.status === "fulfilled" ? populationResult.value?.year : null,
+    region: record?.region || country?.region || "",
+    subregion: record?.subregion || country?.subregion || "",
+    area: Number.isFinite(Number(record?.area)) ? Number(record.area) : (worldBankArea != null ? Number(worldBankArea) : null),
+    areaYear: areaResult.status === "fulfilled" ? areaResult.value?.year : null,
+    currency: currencies.map((item) => item.name && item.symbol ? `${item.name} (${item.symbol})` : item.name || item.symbol).filter(Boolean).join(", "),
+    languages: languages.join(", "),
+  };
+}
+
+function formatPopulation(value) {
+  if (!Number.isFinite(Number(value))) return "Loading…";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value));
+}
+
+function formatArea(value) {
+  if (!Number.isFinite(Number(value))) return "Loading…";
+  return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value))} km²`;
+}
+
+
 const COUNTRY_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#a78bfa", "#fb7185", "#38bdf8"];
 
 function flagEmojiFromCode(code = "") {
@@ -346,6 +402,8 @@ export default function App() {
     militarySpending: null,
     loading: false,
   });
+  const [liveCountryFacts, setLiveCountryFacts] = useState(null);
+  const [liveCountryFactsLoading, setLiveCountryFactsLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -367,6 +425,24 @@ export default function App() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const selected = countryList.find((item) => item.name === countryName) || { name: countryName };
+    const controller = new AbortController();
+    setLiveCountryFacts(null);
+    setLiveCountryFactsLoading(true);
+    fetchCountryFacts(selected, controller.signal)
+      .then((facts) => {
+        if (!controller.signal.aborted) setLiveCountryFacts(facts);
+      })
+      .catch(() => {
+        // Keep the bundled country profile as a fallback if the facts API is temporarily unavailable.
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLiveCountryFactsLoading(false);
+      });
+    return () => controller.abort();
+  }, [countryName, countryList]);
 
   useEffect(() => {
     const iso3 = countryList.find((item) => item.name === countryName)?.iso3;
@@ -419,6 +495,17 @@ export default function App() {
     color: "#38bdf8",
     gdp: "Not available",
     role: "Country profile",
+  };
+  const countryFacts = {
+    ...country,
+    ...(liveCountryFacts || {}),
+    capital: liveCountryFacts?.capital || country.capital,
+    populationValue: liveCountryFacts?.population ?? country.populationValue,
+    region: liveCountryFacts?.region || country.region,
+    subregion: liveCountryFacts?.subregion || country.subregion,
+    currency: liveCountryFacts?.currency || country.currency,
+    languages: liveCountryFacts?.languages || country.languages,
+    areaValue: liveCountryFacts?.area ?? (Number.isFinite(Number(country.area)) ? Number(String(country.area).replace(/[^0-9.]/g, "")) : null),
   };
   const targetCountry = countryList.find((c) => c.name === target) || countryList.find((c) => c.name !== country.name) || countryList[0] || country;
   const filteredCountries = countryList.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.officialName?.toLowerCase().includes(query.toLowerCase()));
@@ -683,13 +770,13 @@ export default function App() {
                 <div className="explore-flag">{country.flag}</div>
                 <h3>{country.name}</h3>
                 <p>{country.role}</p>
-                <div className="explore-stat"><span>Capital</span><b>{country.capital || "Not available"}</b></div>
-                <div className="explore-stat"><span>Population</span><b>{country.population || "Not available"}</b></div>
-                <div className="explore-stat"><span>Region</span><b>{country.subregion || country.region || "Not available"}</b></div>
-                <div className="explore-stat"><span>Currency</span><b>{country.currency || "Not available"}</b></div>
-                <div className="explore-stat"><span>Languages</span><b>{country.languages || "Not available"}</b></div>
-                <div className="explore-stat"><span>Area</span><b>{country.area || "Not available"}</b></div>
-                <div className="explore-stat"><span>Economic position</span><b>{country.economy}</b></div>
+                <div className="explore-stat"><span>Capital</span><b>{countryFacts.capital || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
+                <div className="explore-stat"><span>Population</span><b>{countryFacts.populationValue != null ? formatPopulation(countryFacts.populationValue) : (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
+                <div className="explore-stat"><span>Region</span><b>{countryFacts.subregion || countryFacts.region || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
+                <div className="explore-stat"><span>Currency</span><b>{countryFacts.currency || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
+                <div className="explore-stat"><span>Languages</span><b>{countryFacts.languages || (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
+                <div className="explore-stat"><span>Area</span><b>{countryFacts.areaValue != null ? formatArea(countryFacts.areaValue) : (liveCountryFactsLoading ? "Loading…" : "—")}</b></div>
+                <div className="explore-stat"><span>GDP (nominal)</span><b>{countryIndicators.loading ? "Loading…" : countryIndicators.gdp ? `${formatGDP(countryIndicators.gdp.value)} · ${countryIndicators.gdp.year}` : "No World Bank figure"}</b></div>
                 <div className="explore-stat"><span>Stability index</span><b>{country.stability}/100</b></div>
                 <MiniBars value={country.stability} color="green" />
                 <button className="button explore-select-button" onClick={openGame}>Represent {country.name} <ArrowRight size={16} /></button>

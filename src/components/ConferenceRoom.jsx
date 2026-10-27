@@ -40,74 +40,74 @@ const OPENING_MOVES = {
   India: {
     opponent: "China",
     flag: "🇨🇳",
-    issue: "Critical mineral export dispute",
-    action: "Targeted trade sanctions",
+    issue: "Critical minerals and resilient supply chains",
+    action: "Supply-chain consultations",
     reason:
-      "The opposing delegation is applying economic pressure over a fictional dispute involving critical mineral exports and regional supply chains.",
-    demand: "Suspend the disputed export restrictions",
+      "Delegates are discussing critical-mineral access, supply-chain resilience and the energy transition. The policy issue is real; the sanctions move and this specific dispute are simulated.",
+    demand: "Begin transparent talks on critical-mineral supply chains",
   },
   China: {
     opponent: "United States",
     flag: "🇺🇸",
-    issue: "Technology and trade restrictions",
-    action: "Technology trade sanctions",
+    issue: "Technology governance and strategic trade",
+    action: "Technology-policy consultations",
     reason:
-      "The opposing delegation is applying economic pressure in a fictional dispute over technology access and strategic supply chains.",
-    demand: "Reverse the proposed technology restrictions",
+      "Delegates are examining technology access, export controls and strategic supply chains. These are real-world policy issues; the specific dispute and response in this room are simulated.",
+    demand: "Open talks on technology safeguards and trade measures",
   },
   "United States": {
     opponent: "China",
     flag: "🇨🇳",
-    issue: "Strategic technology restrictions",
-    action: "Targeted technology sanctions",
+    issue: "Strategic technology and international trade",
+    action: "Technology-policy consultations",
     reason:
-      "The opposing delegation is applying pressure in a fictional dispute over strategic technology and international trade.",
-    demand: "Withdraw the proposed restrictions",
+      "Delegates are examining export controls, technology competition and international trade. These are real-world policy issues; the specific confrontation and actions in this room are simulated.",
+    demand: "Open talks on technology safeguards and trade measures",
   },
   France: {
     opponent: "Russia",
     flag: "🇷🇺",
-    issue: "European security dispute",
-    action: "Diplomatic and trade sanctions",
+    issue: "European security and conflict prevention",
+    action: "Emergency diplomatic consultations",
     reason:
-      "The opposing delegation has escalated a fictional security dispute with diplomatic and economic pressure.",
-    demand: "Reverse the disputed security measures",
+      "Delegates are discussing European security, conflict prevention and diplomatic options for reducing escalation. The issue reflects real international-security debates; the specific scenario is simulated.",
+    demand: "Support a monitored diplomatic de-escalation process",
   },
   "United Kingdom": {
     opponent: "Russia",
     flag: "🇷🇺",
-    issue: "Maritime security dispute",
-    action: "Targeted trade sanctions",
+    issue: "Maritime security and freedom of navigation",
+    action: "Maritime security consultations",
     reason:
-      "The opposing delegation is applying pressure in a fictional maritime security dispute.",
-    demand: "Accept an emergency maritime security dialogue",
+      "Delegates are considering risks to commercial shipping and freedom of navigation in strategically important waterways. The policy concern is real; this conference's dispute and actions are simulated.",
+    demand: "Support a coordinated maritime de-escalation plan",
   },
   Russia: {
     opponent: "France",
     flag: "🇫🇷",
-    issue: "Regional security dispute",
-    action: "Diplomatic sanctions",
+    issue: "Conflict prevention and regional security",
+    action: "Emergency diplomatic consultations",
     reason:
-      "The opposing delegation has escalated a fictional regional security disagreement.",
-    demand: "Review the disputed security measures",
+      "Delegates are discussing conflict prevention, regional security and diplomatic options for reducing escalation. The policy area is real; the specific scenario and actions are simulated.",
+    demand: "Review security concerns through a diplomatic process",
   },
   Japan: {
     opponent: "China",
     flag: "🇨🇳",
-    issue: "Regional trade dispute",
-    action: "Targeted trade sanctions",
+    issue: "Regional trade and economic resilience",
+    action: "Trade-policy consultations",
     reason:
-      "The opposing delegation is applying economic pressure in a fictional regional trade dispute.",
-    demand: "Accept a new regional trade arrangement",
+      "Delegates are examining trade resilience, supply-chain exposure and regional economic cooperation. These are real policy themes; the specific dispute and response are simulated.",
+    demand: "Begin talks on regional trade cooperation",
   },
   Brazil: {
     opponent: "United States",
     flag: "🇺🇸",
-    issue: "Agricultural trade dispute",
-    action: "Agricultural trade sanctions",
+    issue: "Food security, agriculture and climate shocks",
+    action: "Food-security coordination proposal",
     reason:
-      "The opposing delegation is applying economic pressure in a fictional agricultural trade dispute.",
-    demand: "Review the disputed trade measures",
+      "Delegates are discussing how conflict, extreme weather and trade disruptions can affect food availability and agricultural livelihoods. The policy issue is real; this room's actions are simulated.",
+    demand: "Coordinate measures to protect food supply and affordability",
   },
 };
 
@@ -166,14 +166,92 @@ export default function ConferenceRoom({ country, onExit, onAdvisor }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
 
+  // Real-world agenda themes are used as context; actions and dialogue remain simulated.
+  // Unknown countries receive a country-dependent scenario instead of the same generic topic.
+  const REAL_WORLD_SCENARIOS = [
+    {
+      opponent: "United Nations Security Council",
+      flag: "🇺🇳",
+      issue: "Conflict, food insecurity and humanitarian access",
+      action: "Emergency humanitarian consultations",
+      reason:
+        "Delegates are examining how armed conflict disrupts food supplies, humanitarian access and civilian protection. The issue reflects topics discussed at the UN Security Council; the in-room actions are simulated.",
+      demand: "Support protected humanitarian access and food supply routes",
+    },
+    {
+      opponent: "European Union",
+      flag: "🇪🇺",
+      issue: "Energy security and critical supply chains",
+      action: "Supply-chain risk consultations",
+      reason:
+        "Delegates are discussing energy security, critical materials and the effects of geopolitical tensions on international supply chains. This is a real-world policy theme; the specific dispute and responses in this room are simulated.",
+      demand: "Agree to transparent supply-chain coordination",
+    },
+    {
+      opponent: "United Kingdom",
+      flag: "🇬🇧",
+      issue: "Maritime security and freedom of navigation",
+      action: "Maritime security consultations",
+      reason:
+        "Delegates are considering risks to commercial shipping and freedom of navigation in strategically important waterways. The topic reflects real maritime-security concerns; this conference's events are simulated.",
+      demand: "Support a coordinated maritime de-escalation plan",
+    },
+    {
+      opponent: "France",
+      flag: "🇫🇷",
+      issue: "Climate finance and resilience for vulnerable states",
+      action: "Climate-finance proposal",
+      reason:
+        "Delegates are debating climate adaptation finance, disaster resilience and support for vulnerable countries. These are ongoing international policy issues; the proposal and negotiation in this room are simulated.",
+      demand: "Commit to measurable climate-resilience support",
+    },
+    {
+      opponent: "Japan",
+      flag: "🇯🇵",
+      issue: "Cybersecurity and responsible use of emerging technology",
+      action: "Technology-governance consultations",
+      reason:
+        "Delegates are considering cybersecurity, digital infrastructure and international approaches to emerging technologies. This is a real policy area; the particular confrontation and statements are simulated.",
+      demand: "Begin a multilateral dialogue on technology safeguards",
+    },
+    {
+      opponent: "Brazil",
+      flag: "🇧🇷",
+      issue: "Food security, agriculture and climate shocks",
+      action: "Food-security coordination proposal",
+      reason:
+        "Delegates are discussing how conflict, extreme weather and trade disruptions can affect food availability and agricultural livelihoods. The policy issue is real; this room's actions are simulated.",
+      demand: "Coordinate measures to protect food supply and affordability",
+    },
+    {
+      opponent: "Germany",
+      flag: "🇩🇪",
+      issue: "European security and diplomatic de-escalation",
+      action: "Emergency diplomatic consultations",
+      reason:
+        "Delegates are discussing European security, conflict prevention and diplomatic options for reducing escalation. The topic reflects real international-security debates; the specific scenario is simulated.",
+      demand: "Support a monitored diplomatic de-escalation process",
+    },
+    {
+      opponent: "India",
+      flag: "🇮🇳",
+      issue: "Public health preparedness and equitable access to essential supplies",
+      action: "Public-health coordination proposal",
+      reason:
+        "Delegates are considering preparedness, resilient health systems and fair access to essential medical supplies during emergencies. This is a real global policy area; the actions in this simulation are fictional.",
+      demand: "Coordinate emergency supply and preparedness planning",
+    },
+  ];
+
+  const countryHash = [...(country?.name || "Global")].reduce(
+    (sum, character) => sum + character.charCodeAt(0),
+    0
+  );
+  const fallbackScenario = REAL_WORLD_SCENARIOS[countryHash % REAL_WORLD_SCENARIOS.length];
   const opening = OPENING_MOVES[country.name] || {
-    opponent: "United States",
-    flag: "🇺🇸",
-    issue: "Strategic trade dispute",
-    action: "Targeted trade sanctions",
-    reason:
-      "The opposing delegation has opened a fictional dispute over trade and strategic interests.",
-    demand: "Enter emergency diplomatic talks",
+    ...fallbackScenario,
+    opponent: fallbackScenario.opponent === country.name ? "United Nations Security Council" : fallbackScenario.opponent,
+    flag: fallbackScenario.opponent === country.name ? "🇺🇳" : fallbackScenario.flag,
   };
 
   const [phase, setPhase] = useState("player");
