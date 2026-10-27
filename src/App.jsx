@@ -365,6 +365,7 @@ export default function App() {
   const [countryDataLoading, setCountryDataLoading] = useState(true);
   const [countryDataError, setCountryDataError] = useState("");
   const [countryIndicators, setCountryIndicators] = useState({
+    population: null,
     gdp: null,
     militarySpending: null,
     loading: false,
@@ -394,19 +395,21 @@ export default function App() {
   useEffect(() => {
     const iso3 = countryList.find((item) => item.name === countryName)?.iso3;
     if (!iso3) {
-      setCountryIndicators({ gdp: null, militarySpending: null, loading: false });
+      setCountryIndicators({ population: null, gdp: null, militarySpending: null, loading: false });
       return undefined;
     }
 
     const controller = new AbortController();
-    setCountryIndicators({ gdp: null, militarySpending: null, loading: true });
+    setCountryIndicators({ population: null, gdp: null, militarySpending: null, loading: true });
 
     Promise.allSettled([
+      fetchLatestWorldBankIndicator(iso3, "SP.POP.TOTL", controller.signal),
       fetchLatestWorldBankIndicator(iso3, "NY.GDP.MKTP.CD", controller.signal),
       fetchLatestWorldBankIndicator(iso3, "MS.MIL.XPND.GD.ZS", controller.signal),
-    ]).then(([gdpResult, militaryResult]) => {
+    ]).then(([populationResult, gdpResult, militaryResult]) => {
       if (controller.signal.aborted) return;
       setCountryIndicators({
+        population: populationResult.status === "fulfilled" ? populationResult.value : null,
         gdp: gdpResult.status === "fulfilled" ? gdpResult.value : null,
         militarySpending: militaryResult.status === "fulfilled" ? militaryResult.value : null,
         loading: false,
@@ -444,6 +447,13 @@ export default function App() {
     role: "Country profile",
   };
   const targetCountry = countryList.find((c) => c.name === target) || countryList.find((c) => c.name !== country.name) || countryList[0] || country;
+  const populationDisplay = country.populationValue != null
+    ? formatCompactNumber(country.populationValue)
+    : countryIndicators.population?.value != null
+      ? formatCompactNumber(countryIndicators.population.value)
+      : country.population && country.population !== "Not available"
+        ? country.population
+        : countryIndicators.loading ? "Loading…" : "Not reported";
   const filteredCountries = countryList.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.officialName?.toLowerCase().includes(query.toLowerCase()));
   useEffect(() => {
     if (countryList.length && !countryList.some((c) => c.name === target)) {
@@ -707,7 +717,7 @@ export default function App() {
                 <h3>{country.name}</h3>
                 <p>{country.role}</p>
                 <div className="explore-stat"><span>Capital</span><b>{country.capital || "Not available"}</b></div>
-                <div className="explore-stat"><span>Population</span><b>{country.population || "Not available"}</b></div>
+                <div className="explore-stat"><span>Population</span><b>{populationDisplay}</b></div>
                 <div className="explore-stat"><span>Region</span><b>{country.subregion || country.region || "Not available"}</b></div>
                 <div className="explore-stat"><span>Currency</span><b>{country.currency || "Not available"}</b></div>
                 <div className="explore-stat"><span>Languages</span><b>{country.languages || "Not available"}</b></div>
@@ -809,7 +819,7 @@ export default function App() {
                   <div className="status-line"><span>Domestic stability</span><b>{country.stability}/100 <small>(simulation score)</small></b></div>
                   <MiniBars value={country.stability} color="green" />
                   <div className="status-divider" />
-                  <div className="status-line"><span>Population</span><b>{country.populationValue != null ? formatCompactNumber(country.populationValue) : (country.population || "Not available")}</b></div>
+                  <div className="status-line"><span>Population</span><b>{populationDisplay}</b></div>
                   <div className="status-line"><span>Capital</span><b>{country.capital || "Not available"}</b></div>
                   <div className="status-line"><span>Region</span><b>{country.subregion || country.region || "Not available"}</b></div>
                   <p className="panel-note">GDP and military spending use the latest available World Bank observations. Missing values mean no data was reported for this country or territory.</p>
@@ -848,14 +858,14 @@ export default function App() {
                 <div className="profile-detail">
                   <span className="flag flag-large">{country.flag}</span>
                   <div><span className="eyebrow">SELECTED PROFILE</span><h2>{country.name}</h2>
-                    <p>{country.capital || "Capital not available"} · {country.population || "Population not available"} people · GDP {country.gdp || "not available"}</p>
+                    <p>{country.capital || "Capital not available"} · {populationDisplay} people · GDP {countryIndicators.gdp ? `${formatGDP(countryIndicators.gdp.value)} (${countryIndicators.gdp.year})` : country.gdp || "not reported"}</p>
                   </div>
                   <span className="status-chip">{country.role}</span>
                 </div>
                 <div style={{ marginTop: 24 }}>
                   <h3 style={glowHeadingStyle}>Country overview</h3>
                   <p style={bodyStyle}>
-                    {briefing?.overview || `${country.name} is in ${country.subregion || country.region || "an unclassified region"}. Its capital is ${country.capital || "not available"}, and its population is ${country.population || "not available"}. The country covers ${country.area || "an area not available"} and uses ${country.currency || "a currency not available"} as its currency. Its main language information is ${country.languages || "not available"}, and its economy is described as ${country.economy || "not rated"}. These details help explain its national priorities and diplomatic position.`}
+                    {briefing?.overview || `${country.name} is in ${country.subregion || country.region || "an unclassified region"}. Its capital is ${country.capital || "not available"}, and its population is ${populationDisplay}. The country covers ${country.area || "an area not available"} and uses ${country.currency || "a currency not available"} as its currency. Its main language information is ${country.languages || "not available"}, and its economy is described as ${country.economy || "not rated"}. These details help explain its national priorities and diplomatic position.`}
                     {briefing ? ` The capital is ${country.capital || "not available"}, the region is ${country.subregion || country.region || "not available"}, the area is ${country.area || "not available"}, the currency is ${country.currency || "not available"}, the languages are ${country.languages || "not available"}, and the economy is ${country.economy || "not rated"}.` : ""}
                   </p>
 
