@@ -12,6 +12,7 @@ import "./PoliticaRedesign.css";
 import WorldMap from "./components/WorldMap";
 import ConferenceRoom from "./components/ConferenceRoom";
 import DashboardInteractions from "./components/DashboardInteractions";
+import CrisisCenter from "./components/CrisisCenter";
 import { getAllCountryProfiles } from "./data/countries.js";
 import { askAdvisor } from "./api/client.js";
 
@@ -32,6 +33,9 @@ const tabs = [
   ["map", "World Map", Globe2],
   ["countries", "Countries", Users],
   ["events", "Events", Bell],
+  ["crisis", "Crisis Center", AlertTriangle],
+  ["resolutions", "Resolutions & Voting", Check],
+  ["impact", "Living World", TrendingUp],
   ["analytics", "World", BarChart3],
 ];
 
@@ -843,6 +847,28 @@ export default function App() {
                 </div>
               </section>;
             })()}
+
+            {["crisis", "resolutions", "impact"].includes(tab) && (
+              <CrisisCenter
+                view={tab}
+                country={country}
+                onResolutionPassed={(result) => {
+                  setNotice(`Resolution passed: ${result.title}. Living world indicators updated.`);
+                  setEvents((old) => [
+                    {
+                      type: "deal",
+                      category: "past",
+                      title: `Resolution passed: ${result.title}`,
+                      detail: "The practice simulation applied deterministic world-state effects.",
+                      time: `Turn ${String(turn).padStart(2, "0")}`,
+                      countries: "Conference delegations",
+                      status: "Passed",
+                    },
+                    ...old,
+                  ]);
+                }}
+              />
+            )}
 
             {tab === "analytics" && <>
               <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value="72/100" color="green" /><Metric icon={TrendingUp} label="Global tension" value="41/100" color="red" /><Metric icon={Handshake} label="Active alliances" value="03" color="purple" /><Metric icon={Target} label="Recorded actions" value={String(turn - 1).padStart(2, "0")} color="gold" /></div>
