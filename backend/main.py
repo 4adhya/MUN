@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,9 @@ from ai.country_agent import COUNTRY_PROFILES, AgentProfile, AgentResult, Countr
 from ai.gemini_client import REASON_CONFIG, resolve_model
 
 from .conference_schemas import (
+    ActionCheckRequest,
+    ActionCheckResponse,
+    AdvancePhaseRequest,
     ConferenceCreateRequest,
     ConferenceSnapshot,
     JoinConferenceRequest,
@@ -244,11 +247,33 @@ def get_conference(conference_id: str) -> ConferenceSnapshot:
     "/conference/{conference_id}/start",
     response_model=ConferenceSnapshot,
     tags=["conference"],
-    summary="Start a conference: assign countries, create the world, enter ROLL_CALL",
+    summary="Start a conference: assign countries, create the world, enter ROLL_CALL (LOBBY -> ROLL_CALL)",
     responses=CONFERENCE_ERRORS,
 )
 def start_conference(conference_id: str) -> ConferenceSnapshot:
     return conference_service.start(conference_id)
+
+
+@app.post(
+    "/conference/{conference_id}/advance",
+    response_model=ConferenceSnapshot,
+    tags=["conference"],
+    summary="Advance the conference one valid phase (the backend decides which); after RESULTS it completes",
+    responses={404: CONFERENCE_ERRORS[404], 409: CONFERENCE_ERRORS[409], 422: CONFERENCE_ERRORS[422]},
+)
+def advance_conference(conference_id: str, req: Optional[AdvancePhaseRequest] = None) -> ConferenceSnapshot:
+    return conference_service.advance(conference_id, req.to_phase if req else None)
+
+
+@app.post(
+    "/conference/{conference_id}/actions/check",
+    response_model=ActionCheckResponse,
+    tags=["conference"],
+    summary="Ask whether an action type is allowed in the conference's current phase (performs nothing)",
+    responses={404: CONFERENCE_ERRORS[404], 409: CONFERENCE_ERRORS[409], 422: CONFERENCE_ERRORS[422]},
+)
+def check_conference_action(conference_id: str, req: ActionCheckRequest) -> ActionCheckResponse:
+    return conference_service.check_action(conference_id, req.action)
 
 
 @app.get(

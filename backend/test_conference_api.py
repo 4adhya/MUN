@@ -171,6 +171,7 @@ def test_snapshot_exposes_no_internal_fields():
     assert set(body) == {
         "id", "name", "committee", "topic", "status", "current_phase", "created_at", "phase_started_at",
         "phase_ends_at", "config", "participant_count", "participants", "assigned_countries", "world",
+        "next_phase", "allowed_actions",  # Phase 3: the backend tells the UI what comes next and what is permitted
     }
     assert "conference_id" not in body["participants"][0]
 

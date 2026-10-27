@@ -39,6 +39,26 @@ class JoinConferenceRequest(BaseModel):
     )
 
 
+class AdvancePhaseRequest(BaseModel):
+    """Body of POST /conference/{id}/advance. The whole body is optional.
+
+    The backend always decides the next phase. `to_phase` is only a stale-screen guard: if it is given, it must
+    equal the next valid step (a phase name, or COMPLETED after RESULTS) or the request is rejected with 409.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    to_phase: Optional[str] = Field(
+        default=None, min_length=1, max_length=32, description="Optional expected next step; verified, never trusted"
+    )
+
+
+class ActionCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    action: str = Field(min_length=1, max_length=32, description="An ActionType, e.g. SPEECH or VOTE")
+
+
 # --- Responses --------------------------------------------------------------------------------
 class CommitteeConfigView(BaseModel):
     max_delegates: int
@@ -63,6 +83,15 @@ class AssignedCountry(BaseModel):
     flag: Optional[str] = None
     participant_id: str
     participant_name: str
+
+
+class ActionCheckResponse(BaseModel):
+    """Returned only when the action IS allowed now; every refusal is an error response."""
+
+    conference_id: str
+    action: str
+    phase: ConferencePhase
+    allowed: bool = True
 
 
 class ConferenceWorldView(BaseModel):
@@ -90,3 +119,10 @@ class ConferenceSnapshot(BaseModel):
     participants: list[ParticipantView]
     assigned_countries: list[AssignedCountry]
     world: Optional[ConferenceWorldView] = Field(default=None, description="None until the conference is started")
+    next_phase: Optional[str] = Field(
+        default=None,
+        description="The one valid next step: a phase name, or COMPLETED after RESULTS. None unless the conference is ACTIVE.",
+    )
+    allowed_actions: list[str] = Field(
+        default_factory=list, description="Action types the current phase permits (empty unless the conference is ACTIVE)"
+    )

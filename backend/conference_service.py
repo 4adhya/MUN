@@ -9,7 +9,10 @@ Country seats are validated against the existing country registry (`country_regi
 for a seat by name, slug or ISO code, which must resolve to a country of the simulation and must not already
 be held by another participant. Delegates who ask for nothing are seated automatically when the conference starts.
 
-Nothing here handles speeches, voting, phase transitions or persistence (later phases).
+The phase flow, per-phase action permissions and deadlines live in `mun.phases`; the service only applies them.
+The backend owns the authoritative phase: it advances one valid step at a time, never to a phase a client names.
+
+Nothing here handles speeches, negotiations, resolutions, voting, crisis or persistence (later phases).
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ from threading import RLock
 from typing import Optional
 
 from .conference_schemas import (
+    ActionCheckResponse,
     AssignedCountry,
     CommitteeConfigView,
     ConferenceSnapshot,
@@ -28,6 +32,8 @@ from .conference_schemas import (
 from .country_registry import find_world_country, resolve_country
 from .models import Country, DiplomacyEvent, WorldState
 from .mun import (
+    COMPLETED_STEP,
+    ActionType,
     Committee,
     CommitteeConfig,
     Conference,
@@ -37,7 +43,13 @@ from .mun import (
     Participant,
     ParticipantRole,
     UnknownCommitteeError,
+    allowed_actions,
+    check_transition,
     get_committee_config,
+    InvalidTransitionError,
+    is_action_allowed,
+    next_phase,
+    phase_deadline,
 )
 from .report_schemas import SimulationReport
 from .report_service import build_report
@@ -139,6 +151,19 @@ class ConferenceService:
         raise ConflictError(f"Conference '{record.conference.id}' is {status.value}; cannot {action}")
 
     @staticmethod
+    def _require_active(record: ConferenceRecord, action: str) -> None:
+        """Phases only move, and phase actions only run, while the conference STATUS is ACTIVE."""
+        status = record.conference.status
+        if status is ConferenceStatus.ACTIVE:
+            return
+        conference_id = record.conference.id
+        if status is ConferenceStatus.WAITING:
+            raise ConflictError(f"Conference '{conference_id}' has not started; start it before you {action}")
+        if status is ConferenceStatus.COMPLETED:
+            raise ConflictError(f"Conference '{conference_id}' is already completed; cannot {action}")
+        raise ConflictError(f"Conference '{conference_id}' is {status.value}; cannot {action}")
+
+    @staticmethod
     def _snapshot(record: ConferenceRecord) -> ConferenceSnapshot:
         conference, world = record.conference, record.world
         if world is not None:
@@ -205,7 +230,21 @@ class ConferenceService:
             participants=participants,
             assigned_countries=assigned,
             world=world_view,
+            next_phase=ConferenceService._next_step(record),
+            allowed_actions=(
+                [a.value for a in ActionType if a in allowed_actions(conference.current_phase)]
+                if conference.status is ConferenceStatus.ACTIVE
+                else []
+            ),
         )
+
+    @staticmethod
+    def _next_step(record: ConferenceRecord) -> Optional[str]:
+        """The next valid step (phase name or COMPLETED) while ACTIVE, else None."""
+        if record.conference.status is not ConferenceStatus.ACTIVE:
+            return None
+        following = next_phase(record.conference.current_phase, record.config.allowed_phases)
+        return following.value if following is not None else COMPLETED_STEP
 
     # --- operations ----------------------------------------------------------------------------
     def create(self, name: str, committee: str, topic: str) -> ConferenceSnapshot:
@@ -301,13 +340,14 @@ class ConferenceService:
             if problems:
                 raise RuntimeError("Conference world is inconsistent: " + "; ".join(problems))
 
+            first_phase = next_phase(record.conference.current_phase, record.config.allowed_phases)  # LOBBY -> ROLL_CALL
             conference = Conference.model_validate(
                 {
                     **record.conference.model_dump(),
                     "status": ConferenceStatus.ACTIVE,
-                    "current_phase": ConferencePhase.ROLL_CALL,
+                    "current_phase": first_phase,
                     "phase_started_at": now,
-                    "phase_ends_at": None,  # phase durations belong to Phase 3
+                    "phase_ends_at": phase_deadline(first_phase, now),
                 }
             )
 
@@ -315,6 +355,67 @@ class ConferenceService:
             record.world = world
             record.conference = conference
             return self._snapshot(record)
+
+    def advance(self, conference_id: str, to_phase: Optional[str] = None) -> ConferenceSnapshot:
+        """Move the conference ONE valid step forward. The backend picks the step; `to_phase` can only confirm it.
+
+        After RESULTS the next step is completion: the STATUS becomes COMPLETED and the phase stays RESULTS.
+        A rejected request changes nothing.
+        """
+        with self._lock:
+            record = self._get(conference_id)
+            self._require_active(record, "advance its phase")
+            current = record.conference.current_phase
+            allowed = record.config.allowed_phases
+
+            target = next_phase(current, allowed)
+            if to_phase is not None:  # a client's claim is verified against the state machine, never obeyed
+                if to_phase == COMPLETED_STEP:
+                    requested: Optional[ConferencePhase] = None
+                else:
+                    try:
+                        requested = ConferencePhase(to_phase)
+                    except ValueError:
+                        valid = ", ".join([p.value for p in ConferencePhase] + [COMPLETED_STEP])
+                        raise InvalidRequestError(f"Invalid phase '{to_phase}'. Valid values: {valid}") from None
+                try:
+                    check_transition(current, requested, allowed)
+                except InvalidTransitionError as exc:
+                    raise ConflictError(str(exc)) from None
+
+            payload = record.conference.model_dump()
+            if target is None:  # RESULTS is done: complete the conference (status), keep the phase
+                payload.update({"status": ConferenceStatus.COMPLETED, "phase_ends_at": None})
+            else:
+                now = datetime.now(timezone.utc)
+                payload.update(
+                    {"current_phase": target, "phase_started_at": now, "phase_ends_at": phase_deadline(target, now)}
+                )
+            record.conference = Conference.model_validate(payload)  # validated before it replaces the old one
+            return self._snapshot(record)
+
+    def check_action(self, conference_id: str, action: str) -> ActionCheckResponse:
+        """The gate every phase-restricted action will pass through. Allows or refuses; performs nothing.
+
+        404 unknown conference, 422 unknown action type, 409 if the conference is not ACTIVE or the current
+        phase does not permit the action.
+        """
+        with self._lock:
+            record = self._get(conference_id)
+            try:
+                action_type = ActionType(action)
+            except ValueError:
+                valid = ", ".join(a.value for a in ActionType)
+                raise InvalidRequestError(f"Invalid action '{action}'. Valid actions: {valid}") from None
+
+            self._require_active(record, f"perform {action_type.value}")
+            phase = record.conference.current_phase
+            if not is_action_allowed(phase, action_type):
+                permitted = ", ".join(a.value for a in ActionType if a in allowed_actions(phase)) or "none"
+                raise ConflictError(
+                    f"{action_type.value} is not allowed during {phase.value}. Allowed in this phase: {permitted}"
+                )
+            return ActionCheckResponse(conference_id=conference_id, action=action_type.value, phase=phase)
 
     def report(self, conference_id: str) -> SimulationReport:
         """Report on a started conference's own world. Read-only; 409 until the conference has started."""
