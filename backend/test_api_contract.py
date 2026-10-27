@@ -336,9 +336,12 @@ def test_ai_agent_can_observe_decide_and_act_with_existing_endpoints(monkeypatch
     history = client.get("/events").json()                                # remember
     assert history[0]["actor"] == richest["id"] and history[0]["target"] == weakest["id"]
 
-    # Execution still goes through /actions/*: /ai/propose and /ai/advisor (advice only) are the only AI paths, and there is no agent API.
-    ai_paths = sorted(p for p in app.openapi()["paths"] if "agent" in p or "ai" in p.split("/"))
+    # Execution still goes through /actions/*: /ai/propose and /ai/advisor (advice only) are the only world-simulation AI
+    # paths, and there is no agent API. Phase 8 adds the conference AI roles under /ai/mun/*: POST-only, proposal-only.
+    paths = app.openapi()["paths"]
+    ai_paths = sorted(p for p in paths if ("agent" in p or "ai" in p.split("/")) and not p.startswith("/ai/mun/"))
     assert ai_paths == ["/ai/advisor", "/ai/propose"]  # advisor chat = advice only; execution is still /actions/*
+    assert all(list(paths[p]) == ["post"] for p in paths if p.startswith("/ai/mun/"))
 
 
 # 14. /ai/propose names the Gemma model for AI decisions; an AI failure is an explicit failure, never a decision ---

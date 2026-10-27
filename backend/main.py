@@ -17,7 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Any, Literal, Optional
-from ai.delegates import router as delegates_router
+
 from pydantic import BaseModel, Field
 
 AI_DIR = Path(__file__).resolve().parent.parent / "ai"
@@ -29,6 +29,7 @@ from ai.advisor import MAX_HISTORY_TURNS, MAX_MESSAGE_CHARS, DiplomaticAdvisor
 from ai.country_agent import COUNTRY_PROFILES, AgentProfile, AgentResult, CountryAgent
 from ai.gemini_client import REASON_CONFIG, resolve_model
 
+from .ai_routes import router as conference_ai_router
 from .conference_schemas import (
     ActionCheckRequest,
     ActionCheckResponse,
@@ -79,7 +80,7 @@ app = FastAPI(
         "Simulation state is currently held in memory."
     ),
 )
-app.include_router(delegates_router)
+
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -137,6 +138,9 @@ def unexpected_error_handler(
         status_code=500,
         content={"detail": "Internal server error"},
     )
+
+
+app.include_router(conference_ai_router)  # Phase 8: proposal-only conference AI roles (see ai_routes.py)
 
 
 ACTION_ERRORS = {
