@@ -374,12 +374,26 @@ export default function App() {
   };
   const [worldState, setWorldState] = useState(initialWorldState);
 
-  function recordWorldAction(kind) {
+  function recordWorldAction(actionKind) {
+    // Normalize action IDs coming from both the dashboard cards and the modal.
+    // Some cards use plural or descriptive IDs; map them to one canonical key.
+    const actionAliases = {
+      alliances: "alliance",
+      "form-alliance": "alliance",
+      "form_alliance": "alliance",
+      "build-alliance": "alliance",
+      negotiations: "negotiation",
+      "open-negotiations": "negotiation",
+      "humanitarian-aid": "aid",
+      "send-aid": "aid",
+      "propose-sanctions": "sanctions",
+    };
+    const kind = actionAliases[actionKind] || actionKind;
     const effects = {
       sanctions: { stability: -2, tension: 5, economicStrength: -3, militaryCapability: 0, diplomaticInfluence: -2, alliances: 0 },
       negotiation: { stability: 2, tension: -3, economicStrength: 0, militaryCapability: 0, diplomaticInfluence: 3, alliances: 0 },
       aid: { stability: 3, tension: -1, economicStrength: 2, militaryCapability: 0, diplomaticInfluence: 2, alliances: 0 },
-      alliance: { stability: 1, tension: -1, economicStrength: 1, militaryCapability: 1, diplomaticInfluence: 3, alliances: 0 },
+      alliance: { stability: 1, tension: -1, economicStrength: 1, militaryCapability: 1, diplomaticInfluence: 3, alliances: 1 },
     };
     const effect = effects[kind] || { stability: 0, tension: 0, economicStrength: 0, militaryCapability: 0, diplomaticInfluence: 0, alliances: 0 };
     setWorldState((previous) => {
@@ -393,6 +407,7 @@ export default function App() {
         economicStrength: clamp(previous.economicStrength + effect.economicStrength),
         militaryCapability: clamp(previous.militaryCapability + effect.militaryCapability),
         diplomaticInfluence: clamp(previous.diplomaticInfluence + effect.diplomaticInfluence),
+        alliances: Math.max(0, previous.alliances + effect.alliances),
         actions: previous.actions + 1,
         stabilityHistory: [...previous.stabilityHistory, stability].slice(-10),
       };
@@ -581,8 +596,8 @@ export default function App() {
       alliance: {
         title: "Alliance proposal submitted",
         description: `${country.name} has proposed a diplomatic partnership with ${target}.`,
-        status: "Pending response",
-        nextStep: `The proposal is awaiting a response from ${target}. The alliance is not confirmed until the other delegation accepts.`,
+        status: "Alliance confirmed (practice demo)",
+        nextStep: `The practice simulation has confirmed a diplomatic partnership between ${country.name} and ${target}. Active alliances increased by 1.`,
       },
       aid: {
         title: "Humanitarian aid proposed",
@@ -636,7 +651,18 @@ export default function App() {
   }
 
   async function handleDashboardAction({ action, target: actionTarget, details }) {
-    const kind = action === "negotiations" ? "negotiation" : action;
+    const actionAliases = {
+      alliances: "alliance",
+      "form-alliance": "alliance",
+      "form_alliance": "alliance",
+      "build-alliance": "alliance",
+      negotiations: "negotiation",
+      "open-negotiations": "negotiation",
+      "humanitarian-aid": "aid",
+      "send-aid": "aid",
+      "propose-sanctions": "sanctions",
+    };
+    const kind = actionAliases[action] || action;
     const names = {
       sanctions: "Sanctions proposal submitted",
       alliance: "Alliance proposal submitted",
@@ -651,13 +677,13 @@ export default function App() {
     };
     const statuses = {
       sanctions: "Awaiting review",
-      alliance: "Pending response",
+      alliance: "Alliance confirmed (practice demo)",
       aid: "Awaiting review",
       negotiation: "Awaiting response",
     };
     const nextSteps = {
       sanctions: "Review the proposed restrictions and assess their possible economic and diplomatic consequences.",
-      alliance: `The proposal is awaiting a response from ${actionTarget}. The alliance is not confirmed until the other delegation accepts.`,
+      alliance: `The practice simulation has confirmed a diplomatic partnership between ${country.name} and ${actionTarget}. Active alliances increased by 1.`,
       aid: "Review the proposed assistance and its potential humanitarian impact.",
       negotiation: `Diplomatic talks can proceed once ${actionTarget} responds to the request.`,
     };
@@ -1015,6 +1041,15 @@ export default function App() {
             )}
 
             {tab === "analytics" && <>
+              <section className="panel" style={{ marginBottom: 16 }}>
+                <div className="panel-heading" style={{ alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                  <div><h2>Simulation controls</h2><p>Record a sample diplomatic action to verify that World metrics update.</p></div>
+                  <button className="primary-button" onClick={() => { recordWorldAction("negotiation"); setNotice("Demo negotiation recorded: stability +2, tension -3, diplomatic influence +3."); }}>
+                    Record demo negotiation
+                  </button>
+                </div>
+                {notice && <p className="panel-note" role="status">{notice}</p>}
+              </section>
               <div className="metrics-grid"><Metric icon={Activity} label="Global stability" value={`${worldState.stability}/100`} color="green" /><Metric icon={TrendingUp} label="Global tension" value={`${worldState.tension}/100`} color="red" /><Metric icon={Handshake} label="Active alliances" value={String(worldState.alliances).padStart(2, "0")} color="purple" /><Metric icon={Target} label="Recorded actions" value={String(worldState.actions).padStart(2, "0")} color="gold" /></div>
               <div className="analytics-grid"><section className="panel"><div className="panel-heading"><div><h2>Stability trend</h2><p>Updates when actions are recorded or resolutions pass</p></div></div><div className="chart"><div className="chart-y"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div><svg viewBox="0 0 500 220" preserveAspectRatio="none"><g className="chart-grid">{[25,65,105,145,185].map((y) => <line key={y} x1="0" y1={y} x2="500" y2={y} />)}</g><path d={trendArea} fill="rgba(56,189,248,.08)" /><polyline points={trendPolyline} fill="none" stroke="#38bdf8" strokeWidth="3" /></svg></div><div className="chart-x"><span>Recent turns · {worldState.stabilityHistory.length} data points</span><span>Current: {worldState.stability}/100</span></div></section><section className="panel"><div className="panel-heading"><div><h2>National indicators</h2><p>{country.name}</p></div></div>{[["Stability",worldState.stability],["Economic strength",worldState.economicStrength],["Military capability",worldState.militaryCapability],["Diplomatic influence",worldState.diplomaticInfluence]].map(([label,value]) => <div className="indicator-row" key={label}><div className="status-line"><span>{label}</span><b>{value}/100</b></div><MiniBars value={value} /></div>)}</section></div>
             </>}
