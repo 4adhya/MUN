@@ -1,453 +1,656 @@
-import { useState } from "react";
-import {
-  AlertTriangle,
-  Shield,
-  Users,
-  Vote,
-  CheckCircle2,
-  Activity,
-  Globe2,
-  MessageSquare,
-  FileText,
-  RotateCcw,
-} from "lucide-react";
 
-const INITIAL_METRICS = {
-  cybersecurity: 60,
-  trust: 50,
-  tension: 40,
-  economicRisk: 35,
-};
+import React, { useState } from "react";
 
-const CRISIS_OPTIONS = [
+const initialCrises = [
   {
-    id: "cyberattack",
+    id: 1,
+    category: "Cybersecurity",
+    severity: "High",
     title: "Global Cyberattack",
-    type: "Cybersecurity",
-    severity: "High",
     description:
-      "Multiple national infrastructure networks report a coordinated cyberattack. Delegates must coordinate cyber defence while avoiding an escalation based on unverified attribution.",
-    affected: ["India", "United States", "China", "Algeria", "France"],
+      "Multiple national infrastructure networks report a coordinated cyberattack. Delegates must coordinate cyber defence while avoiding escalation based on unverified attribution.",
+    status: "Active",
+    responses: [],
   },
   {
-    id: "trade",
-    title: "Strategic Trade Dispute",
-    type: "Economic",
+    id: 2,
+    category: "Economic",
     severity: "Moderate",
+    title: "Strategic Trade Dispute",
     description:
-      "A dispute over strategic goods has disrupted supply chains. Delegates must decide whether to negotiate, provide assistance, or impose restrictions.",
-    affected: ["Algeria", "China", "United States", "India"],
+      "A major trade dispute threatens global supply chains. Delegates must negotiate trade protections and prevent further economic instability.",
+    status: "Active",
+    responses: [],
   },
   {
-    id: "humanitarian",
-    title: "Regional Humanitarian Emergency",
-    type: "Humanitarian",
+    id: 3,
+    category: "Humanitarian",
     severity: "High",
+    title: "Regional Humanitarian Emergency",
     description:
-      "A sudden emergency has displaced civilians and strained essential services. Delegates are asked to coordinate relief and protect critical supplies.",
-    affected: ["Affected region", "Neighbouring states", "Aid partners"],
+      "A regional emergency has displaced civilians and disrupted essential services. Delegates must coordinate aid and protect vulnerable populations.",
+    status: "Active",
+    responses: [],
   },
 ];
 
-const RESOLUTIONS = [
-  {
-    id: "cooperation",
-    title: "International Cybersecurity Cooperation Pact",
-    summary:
-      "Create a shared incident-response framework, exchange verified threat information, and fund cyber resilience support.",
-    effects: { cybersecurity: 15, trust: 8, tension: -10, economicRisk: -5 },
-  },
-  {
-    id: "sanctions",
-    title: "Coordinated Restrictive Measures",
-    summary:
-      "Apply targeted restrictions while requesting an independent investigation and maintaining diplomatic communication channels.",
-    effects: { cybersecurity: 5, trust: -3, tension: 10, economicRisk: 8 },
-  },
-  {
-    id: "relief",
-    title: "Joint Assistance and De-escalation Plan",
-    summary:
-      "Coordinate assistance, establish a crisis hotline, and create a monitoring group to reduce the risk of further escalation.",
-    effects: { cybersecurity: 4, trust: 12, tension: -12, economicRisk: -8 },
-  },
+const countries = [
+  "Afghanistan",
+  "India",
+  "China",
+  "United States",
+  "France",
+  "United Kingdom",
+  "Russia",
+  "Japan",
+  "Brazil",
 ];
 
-const DEMO_DELEGATIONS = [
-  { name: "United States", vote: "For" },
-  { name: "France", vote: "For" },
-  { name: "Japan", vote: "For" },
-  { name: "China", vote: "Abstain" },
-  { name: "Russia", vote: "Against" },
-];
-
-const styles = {
-  page: { display: "grid", gap: 18, paddingBottom: 32 },
-  panel: {
-    background: "rgba(5, 20, 36, 0.94)",
-    border: "1px solid #21445e",
-    borderRadius: 14,
-    padding: 20,
-    color: "#e5f2ff",
-    minWidth: 0,
-  },
-  muted: { color: "#9bb4c9", lineHeight: 1.65 },
-  button: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    background: "#0b4266",
-    border: "1px solid #287aa6",
-    color: "#e5f6ff",
-    borderRadius: 9,
-    padding: "10px 14px",
-    cursor: "pointer",
-    font: "inherit",
-  },
-  input: {
-    width: "100%",
-    boxSizing: "border-box",
-    background: "#081727",
-    color: "#e5f2ff",
-    border: "1px solid #21445e",
-    borderRadius: 9,
-    padding: 12,
-    font: "inherit",
-  },
-  eyebrow: {
-    color: "#38bdf8",
-    letterSpacing: 2,
-    fontSize: 11,
-    fontWeight: 800,
-  },
+const buttonStyle = {
+  padding: "12px 18px",
+  borderRadius: 10,
+  border: "1px solid #2385aa",
+  background: "#104466",
+  color: "#e1f2ff",
+  cursor: "pointer",
+  fontSize: 15,
 };
 
-function MetricCard({ label, value, color, description }) {
-  return (
-    <div style={{ background: "#081727", border: "1px solid #21445e", borderRadius: 10, padding: 16 }}>
-      <small style={{ color: "#9bb4c9" }}>{label}</small>
-      <h2 style={{ color, margin: "10px 0" }}>{value}/100</h2>
-      <div style={{ height: 5, background: "#1a3044", borderRadius: 9, overflow: "hidden" }}>
-        <div style={{ width: `${value}%`, height: "100%", borderRadius: 9, background: color, transition: "width .35s ease" }} />
-      </div>
-      {description && <small style={{ color: "#819ab0", display: "block", marginTop: 8 }}>{description}</small>}
-    </div>
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: 12,
+  borderRadius: 8,
+  border: "1px solid #294d67",
+  background: "#08182a",
+  color: "#e1efff",
+  marginTop: 7,
+};
+
+const panelStyle = {
+  background: "rgba(5, 20, 37, 0.94)",
+  border: "1px solid #234762",
+  borderRadius: 18,
+  padding: 24,
+  marginBottom: 24,
+};
+
+export default function CrisisCenter() {
+  const [crises, setCrises] = useState(() =>
+    initialCrises.map((crisis) => ({ ...crisis, responses: [] }))
   );
-}
-
-export default function CrisisCenter({ view = "crisis", country = { name: "India", flag: "🇮🇳" }, onResolutionPassed }) {
-  const [crises, setCrises] = useState(CRISIS_OPTIONS);
-  const [activeCrisisId, setActiveCrisisId] = useState("cyberattack");
-  const [newTitle, setNewTitle] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newSeverity, setNewSeverity] = useState("Moderate");
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [response, setResponse] = useState("");
-  const [statement, setStatement] = useState("");
-  const [submittedResponses, setSubmittedResponses] = useState([]);
-  const [selectedResolutionId, setSelectedResolutionId] = useState("cooperation");
-  const [userVote, setUserVote] = useState("");
-  const [votes, setVotes] = useState({});
-  const [metrics, setMetrics] = useState(INITIAL_METRICS);
-  const [appliedResolution, setAppliedResolution] = useState(null);
-  const [message, setMessage] = useState("");
+  const [selectedId, setSelectedId] = useState(1);
+  const [country, setCountry] = useState("Afghanistan");
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [practiceMode, setPracticeMode] = useState(true);
   const [turn, setTurn] = useState(1);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
+  const [messages, setMessages] = useState([
+    "Welcome to the Crisis Center. Review active crises and select your response.",
+  ]);
+  const [responseText, setResponseText] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const activeCrisis = crises.find((item) => item.id === activeCrisisId) || crises[0];
-  const selectedResolution = RESOLUTIONS.find((item) => item.id === selectedResolutionId) || RESOLUTIONS[0];
-  const alreadyApplied = Boolean(appliedResolution);
+  const [newTitle, setNewTitle] = useState("");
+  const [newCategory, setNewCategory] = useState("Cybersecurity");
+  const [newSeverity, setNewSeverity] = useState("High");
+  const [newDescription, setNewDescription] = useState("");
+
+  const selectedCrisis =
+    crises.find((crisis) => crisis.id === selectedId) || crises[0];
+
+  function resetDemo() {
+    setCrises(initialCrises.map((crisis) => ({ ...crisis, responses: [] })));
+    setSelectedId(1);
+    setTurn(1);
+    setCountry("Afghanistan");
+    setPracticeMode(true);
+    setShowCountryPicker(false);
+    setShowCreateForm(false);
+    setResponseText("");
+    setMessages([
+      "Demo reset. The initial crisis briefings have been restored.",
+    ]);
+    setNotice("Demo reset successfully.");
+  }
+
+  function advanceTurn() {
+    setTurn((current) => current + 1);
+    setNotice(`Advanced to Turn ${String(turn + 1).padStart(2, "0")}.`);
+    setMessages((current) => [
+      ...current,
+      `Turn ${String(turn + 1).padStart(2, "0")} started.`,
+    ]);
+  }
 
   function createCrisis(event) {
     event.preventDefault();
-    const title = newTitle.trim();
-    const description = newDescription.trim();
-    if (!title || !description) {
-      setMessage("Enter both a crisis title and a briefing.");
+
+    if (!newTitle.trim() || !newDescription.trim()) {
+      setNotice("Enter a crisis title and description.");
       return;
     }
+
     const crisis = {
-      id: `custom-${Date.now()}`,
-      title,
-      type: "Custom crisis",
+      id: Date.now(),
+      title: newTitle.trim(),
+      category: newCategory,
       severity: newSeverity,
-      description,
-      affected: [country.name, "Other participating delegations"],
+      description: newDescription.trim(),
+      status: "Active",
+      responses: [],
     };
-    setCrises((previous) => [crisis, ...previous]);
-    setActiveCrisisId(crisis.id);
+
+    setCrises((current) => [...current, crisis]);
+    setSelectedId(crisis.id);
     setNewTitle("");
     setNewDescription("");
+    setNewCategory("Cybersecurity");
+    setNewSeverity("High");
     setShowCreateForm(false);
-    setMessage("Crisis created in this browser session.");
+    setNotice("Crisis added to the local demo.");
+    setMessages((current) => [
+      ...current,
+      `New crisis created: ${crisis.title}.`,
+    ]);
   }
 
   function submitResponse(event) {
     event.preventDefault();
-    if (!response) {
-      setMessage("Choose a response before submitting.");
+
+    if (!responseText.trim()) {
+      setNotice("Write a response before submitting.");
       return;
     }
-    const entry = {
-      id: `${Date.now()}-${Math.random()}`,
-      country: country.name,
-      flag: country.flag || "🌐",
-      response,
-      statement: statement.trim(),
-      crisis: activeCrisis.title,
+
+    const response = {
+      country,
       turn,
+      text: responseText.trim(),
+      timestamp: new Date().toLocaleTimeString(),
     };
-    setSubmittedResponses((previous) => [entry, ...previous]);
-    setStatement("");
-    setMessage(`${country.name}'s response was recorded in the frontend demo.`);
-  }
 
-  function castVote(vote) {
-    if (alreadyApplied) {
-      setMessage("This demo resolution has already been applied. Reset the demo to try again.");
-      return;
-    }
-    setUserVote(vote);
-    setVotes((previous) => ({ ...previous, [country.name]: vote }));
-    setMessage(`Your vote (${vote}) has been recorded for this demo.`);
-  }
-
-  function passResolution() {
-    if (alreadyApplied) return;
-    const demoVotes = { ...votes, [country.name]: userVote || "For" };
-    const simulatedVotes = DEMO_DELEGATIONS.reduce((all, item) => {
-      all[item.name] = item.vote;
-      return all;
-    }, {});
-    const allVotes = { ...simulatedVotes, ...demoVotes };
-    const voteValues = Object.values(allVotes);
-    const forCount = voteValues.filter((vote) => vote === "For").length;
-    const againstCount = voteValues.filter((vote) => vote === "Against").length;
-    const passes = forCount > againstCount;
-
-    if (!passes) {
-      setMessage(`Resolution did not pass in the demo vote (${forCount} for, ${againstCount} against).`);
-      return;
-    }
-
-    const nextMetrics = Object.fromEntries(
-      Object.entries(metrics).map(([key, value]) => [
-        key,
-        Math.max(0, Math.min(100, value + (selectedResolution.effects[key] || 0))),
-      ])
+    setCrises((current) =>
+      current.map((crisis) =>
+        crisis.id === selectedId
+          ? { ...crisis, responses: [...crisis.responses, response] }
+          : crisis
+      )
     );
 
-    const result = {
-      title: selectedResolution.title,
-      effects: selectedResolution.effects,
-      metrics: nextMetrics,
-      votes: { for: forCount, against: againstCount, abstain: voteValues.filter((vote) => vote === "Abstain").length },
-      crisis: activeCrisis.title,
-      turn,
-    };
+    setMessages((current) => [
+      ...current,
+      `${country} submitted a response to ${selectedCrisis.title}: ${response.text}`,
+    ]);
 
-    setMetrics(nextMetrics);
-    setAppliedResolution(result);
-    setTurn((previous) => previous + 1);
-    setMessage(`Resolution passed (${forCount} for, ${againstCount} against). Illustrative world-state effects applied.`);
-    onResolutionPassed?.(result);
+    setResponseText("");
+    setNotice("Response saved in the local demo.");
   }
 
-  function resetDemo() {
-    setMetrics(INITIAL_METRICS);
-    setAppliedResolution(null);
-    setVotes({});
-    setUserVote("");
-    setSubmittedResponses([]);
-    setTurn(1);
-    setMessage("The Phase 7 demo has been reset.");
+  function resolveCrisis() {
+    if (!selectedCrisis || selectedCrisis.status === "Resolved") return;
+
+    setCrises((current) =>
+      current.map((crisis) =>
+        crisis.id === selectedId
+          ? { ...crisis, status: "Resolved" }
+          : crisis
+      )
+    );
+
+    setNotice(`${selectedCrisis.title} marked as resolved in the demo.`);
+    setMessages((current) => [
+      ...current,
+      `${selectedCrisis.title} was marked as resolved.`,
+    ]);
   }
-
-  const metricCards = [
-    ["Cybersecurity", metrics.cybersecurity, "#38bdf8", "Higher is better"],
-    ["International Trust", metrics.trust, "#34d399", "Higher is better"],
-    ["Diplomatic Tension", metrics.tension, "#fb7185", "Lower is better"],
-    ["Economic Risk", metrics.economicRisk, "#fbbf24", "Lower is better"],
-  ];
-
-  const heading = view === "resolutions"
-    ? "Resolutions & Voting"
-    : view === "impact"
-      ? "Living World"
-      : "Crisis Center";
 
   return (
-    <div style={styles.page}>
-      <section style={styles.panel}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
+    <main
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(ellipse at 65% 35%, #102c49 0%, #07182b 55%, #061322 100%)",
+        color: "#dfedff",
+        padding: "32px clamp(16px, 3vw, 42px)",
+        fontFamily: "Inter, system-ui, sans-serif",
+        boxSizing: "border-box",
+      }}
+    >
+      <header style={{ marginBottom: 32 }}>
+        <div
+          style={{
+            color: "#43c8ff",
+            letterSpacing: 3,
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          GLOBAL AFFAIRS / SIMULATION
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+            marginTop: 12,
+          }}
+        >
           <div>
-            <span style={styles.eyebrow}>PHASE 7 / CRISIS ENGINE</span>
-            <h2 style={{ margin: "8px 0" }}>{heading}</h2>
-            <p style={styles.muted}>A frontend prototype for crisis briefings, country responses, resolution voting and deterministic world-state changes.</p>
+            <h1 style={{ margin: 0, fontSize: 36 }}>Crisis Center</h1>
+            <p style={{ color: "#8da9c3", marginBottom: 0 }}>
+              Monitor the world. Understand your position. Choose your next move.
+            </p>
           </div>
-          <button type="button" style={styles.button} onClick={resetDemo}><RotateCcw size={15} /> Reset demo</button>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button style={buttonStyle} onClick={advanceTurn}>
+              ◷ Turn {String(turn).padStart(2, "0")}
+            </button>
+            <button
+              style={buttonStyle}
+              onClick={() => setShowMessages((current) => !current)}
+              aria-expanded={showMessages}
+              aria-label="Toggle messages"
+            >
+              ▢ Messages ({messages.length})
+            </button>
+          </div>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          <span style={{ ...styles.button, cursor: "default" }}><Activity size={14} /> Turn {String(turn).padStart(2, "0")}</span>
-          <span style={{ ...styles.button, cursor: "default" }}><Globe2 size={14} /> {country.flag || "🌐"} {country.name}</span>
-          <span style={{ ...styles.button, cursor: "default" }}>{alreadyApplied ? "Resolution applied" : "Practice mode"}</span>
+      </header>
+
+      {notice && (
+        <div
+          role="status"
+          style={{
+            ...panelStyle,
+            padding: 14,
+            color: "#68d5ff",
+            marginBottom: 18,
+          }}
+        >
+          {notice}
+          <button
+            onClick={() => setNotice("")}
+            style={{
+              ...buttonStyle,
+              float: "right",
+              padding: "3px 9px",
+            }}
+            aria-label="Dismiss notification"
+          >
+            ×
+          </button>
         </div>
+      )}
+
+      <section style={panelStyle}>
+        <div
+          style={{
+            color: "#36caff",
+            letterSpacing: 3,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          PHASE 7 / CRISIS ENGINE
+        </div>
+
+        <h2 style={{ fontSize: 30 }}>Crisis Center</h2>
+        <p style={{ color: "#9cb5ca", lineHeight: 1.7 }}>
+          Review briefings, submit national responses and track crisis
+          developments.
+        </p>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 24,
+          }}
+        >
+          <button style={buttonStyle} onClick={resetDemo}>
+            ↺ Reset demo
+          </button>
+
+          <button
+            style={buttonStyle}
+            onClick={advanceTurn}
+            title="Advance the local demo turn"
+          >
+            ϟ Turn {String(turn).padStart(2, "0")}
+          </button>
+
+          <button
+            style={buttonStyle}
+            onClick={() => setShowCountryPicker((current) => !current)}
+            aria-expanded={showCountryPicker}
+          >
+            🌐 {country} ▾
+          </button>
+
+          <button
+            style={{
+              ...buttonStyle,
+              background: practiceMode ? "#12516a" : "#252f40",
+            }}
+            onClick={() => {
+              setPracticeMode((current) => !current);
+              setNotice(
+                practiceMode
+                  ? "Practice mode turned off in the local UI."
+                  : "Practice mode turned on."
+              );
+            }}
+            aria-pressed={practiceMode}
+          >
+            {practiceMode ? "✓ Practice mode: ON" : "Practice mode: OFF"}
+          </button>
+        </div>
+
+        {showCountryPicker && (
+          <div style={{ marginTop: 18, maxWidth: 350 }}>
+            <label htmlFor="country-select">Select your delegation</label>
+            <select
+              id="country-select"
+              value={country}
+              onChange={(event) => {
+                setCountry(event.target.value);
+                setShowCountryPicker(false);
+                setNotice(`Selected delegation: ${event.target.value}.`);
+              }}
+              style={inputStyle}
+            >
+              {countries.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </section>
 
-      {view === "crisis" && (
-        <>
-          <section style={styles.panel}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-              <h3 style={{ margin: 0 }}><AlertTriangle size={18} style={{ verticalAlign: "middle", color: "#fbbf24" }} /> Active crisis briefing</h3>
-              <button type="button" style={styles.button} onClick={() => setShowCreateForm((show) => !show)}>
-                {showCreateForm ? "Cancel" : "＋ Create crisis"}
-              </button>
-            </div>
-
-            {showCreateForm && (
-              <form onSubmit={createCrisis} style={{ display: "grid", gap: 12, marginTop: 16 }}>
-                <input style={styles.input} value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Crisis title" maxLength={100} />
-                <textarea style={{ ...styles.input, resize: "vertical" }} rows={3} value={newDescription} onChange={(event) => setNewDescription(event.target.value)} placeholder="Write the crisis briefing..." maxLength={1000} />
-                <select style={styles.input} value={newSeverity} onChange={(event) => setNewSeverity(event.target.value)}>
-                  <option>Low</option><option>Moderate</option><option>High</option><option>Critical</option>
-                </select>
-                <button type="submit" style={styles.button}>Create briefing</button>
-              </form>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 16 }}>
-              {crises.map((crisis) => (
-                <button key={crisis.id} type="button" onClick={() => setActiveCrisisId(crisis.id)} style={{
-                  textAlign: "left", padding: 14, borderRadius: 10, cursor: "pointer", color: "#e5f2ff",
-                  background: activeCrisisId === crisis.id ? "#10344d" : "#081727",
-                  border: `1px solid ${activeCrisisId === crisis.id ? "#38bdf8" : "#21445e"}`,
-                }}>
-                  <small style={{ color: "#38bdf8" }}>{crisis.type} · {crisis.severity}</small>
-                  <strong style={{ display: "block", marginTop: 8 }}>{crisis.title}</strong>
-                </button>
-              ))}
-            </div>
-
-            {activeCrisis && (
-              <div style={{ marginTop: 18, padding: 18, background: "#081727", border: "1px solid #21445e", borderRadius: 10 }}>
-                <span style={styles.eyebrow}>SITUATION REPORT</span>
-                <h3>{activeCrisis.title}</h3>
-                <p style={styles.muted}>{activeCrisis.description}</p>
-                <p><strong>Severity:</strong> {activeCrisis.severity}</p>
-                <p><strong>Affected parties:</strong> {activeCrisis.affected.join(" · ")}</p>
+      {showMessages && (
+        <section style={panelStyle}>
+          <h2>Conference Messages</h2>
+          <div
+            style={{
+              maxHeight: 240,
+              overflowY: "auto",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            {messages.map((message, index) => (
+              <div
+                key={`${index}-${message}`}
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  background: "#0b2034",
+                  color: "#b8d4e8",
+                }}
+              >
+                {message}
               </div>
-            )}
-          </section>
-
-          <section style={styles.panel}>
-            <h3><Shield size={18} style={{ verticalAlign: "middle" }} /> Submit your country's response</h3>
-            <p style={styles.muted}>Choose a policy response and submit a short statement as your delegation.</p>
-            <form onSubmit={submitResponse} style={{ display: "grid", gap: 12 }}>
-              <select style={styles.input} value={response} onChange={(event) => setResponse(event.target.value)}>
-                <option value="">Choose a response</option>
-                <option value="International cooperation">International cooperation</option>
-                <option value="Emergency negotiations">Request emergency negotiations</option>
-                <option value="Targeted sanctions">Propose targeted sanctions</option>
-                <option value="Defensive measures">Strengthen defensive measures</option>
-                <option value="Humanitarian assistance">Offer humanitarian assistance</option>
-              </select>
-              <textarea style={{ ...styles.input, resize: "vertical" }} rows={3} value={statement} onChange={(event) => setStatement(event.target.value)} placeholder={`Write ${country.name}'s diplomatic statement...`} maxLength={1200} />
-              <div><button type="submit" style={styles.button}>Submit country response</button></div>
-            </form>
-            {submittedResponses.length > 0 && (
-              <div style={{ marginTop: 18 }}>
-                <h4>Recorded responses</h4>
-                {submittedResponses.map((item) => (
-                  <div key={item.id} style={{ borderTop: "1px solid #21445e", padding: "12px 0" }}>
-                    <strong>{item.flag} {item.country}</strong> · {item.response}
-                    <p style={styles.muted}>{item.statement || "No additional statement provided."}</p>
-                    <small style={{ color: "#819ab0" }}>{item.crisis} · Turn {item.turn}</small>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
-      )}
-
-      {view === "resolutions" && (
-        <>
-          <section style={styles.panel}>
-            <h3><FileText size={18} style={{ verticalAlign: "middle" }} /> Draft resolution</h3>
-            <p style={styles.muted}>Choose a proposal. Its predefined rules determine the illustrative world-state changes if it passes.</p>
-            {RESOLUTIONS.map((resolution) => (
-              <label key={resolution.id} style={{
-                display: "flex", gap: 12, alignItems: "flex-start", padding: 15, marginTop: 10, borderRadius: 10,
-                border: `1px solid ${selectedResolutionId === resolution.id ? "#38bdf8" : "#21445e"}`,
-                background: selectedResolutionId === resolution.id ? "#10344d" : "#081727", cursor: "pointer",
-              }}>
-                <input type="radio" name="phase7-resolution" checked={selectedResolutionId === resolution.id} onChange={() => setSelectedResolutionId(resolution.id)} disabled={alreadyApplied} />
-                <span><strong>{resolution.title}</strong><p style={styles.muted}>{resolution.summary}</p></span>
-              </label>
             ))}
-          </section>
-
-          <section style={styles.panel}>
-            <h3><Vote size={18} style={{ verticalAlign: "middle" }} /> Vote on the resolution</h3>
-            <p style={styles.muted}>Your vote is recorded under your selected delegation. Other displayed votes are sample votes for the frontend demonstration.</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {["For", "Against", "Abstain"].map((vote) => (
-                <button key={vote} type="button" disabled={alreadyApplied} onClick={() => { setUserVote(vote); setVotes((previous) => ({ ...previous, [country.name]: vote })); setMessage(`Your vote (${vote}) has been recorded.`); }} style={{ ...styles.button, borderColor: userVote === vote ? "#38bdf8" : "#287aa6", opacity: alreadyApplied ? 0.6 : 1 }}>
-                  {vote}
-                </button>
-              ))}
-            </div>
-            <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-              {DEMO_DELEGATIONS.map((delegate) => (
-                <div key={delegate.name} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: 10, background: "#081727", borderRadius: 8 }}>
-                  <span>{delegate.name}</span><strong>{delegate.vote}</strong>
-                </div>
-              ))}
-              {userVote && <div style={{ display: "flex", justifyContent: "space-between", padding: 10, border: "1px solid #287aa6", borderRadius: 8 }}><span>{country.name} (your delegation)</span><strong>{userVote}</strong></div>}
-            </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
-              <button type="button" style={{ ...styles.button, opacity: alreadyApplied ? 0.6 : 1 }} disabled={alreadyApplied} onClick={passResolution}>Calculate vote & apply resolution</button>
-            </div>
-            {appliedResolution && (
-              <p style={{ color: "#34d399" }}><CheckCircle2 size={16} style={{ verticalAlign: "middle" }} /> Passed: {appliedResolution.title}</p>
-            )}
-          </section>
-        </>
-      )}
-
-      {view === "impact" && (
-        <section style={styles.panel}>
-          <h3><Globe2 size={18} style={{ verticalAlign: "middle" }} /> Living world state</h3>
-          <p style={styles.muted}>These values update in this component after a demo resolution passes. They are illustrative simulation scores, not real-world measurements.</p>
-          {appliedResolution && (
-            <div style={{ padding: 14, border: "1px solid #27644f", background: "#0b2927", borderRadius: 10, margin: "16px 0" }}>
-              <strong><CheckCircle2 size={16} style={{ verticalAlign: "middle" }} /> Latest change: {appliedResolution.title}</strong>
-              <p style={styles.muted}>Vote tally: {appliedResolution.votes.for} for · {appliedResolution.votes.against} against · {appliedResolution.votes.abstain} abstained.</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
-                {Object.entries(appliedResolution.effects).map(([key, value]) => (
-                  <div key={key} style={{ background: "#081727", borderRadius: 8, padding: 10 }}>
-                    <small style={{ color: "#9bb4c9" }}>{key.replace(/([A-Z])/g, " $1")}</small>
-                    <strong style={{ display: "block", marginTop: 6, color: value >= 0 ? "#34d399" : "#fb7185" }}>{value > 0 ? "+" : ""}{value}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 16 }}>
-            {metricCards.map(([label, value, color, description]) => <MetricCard key={label} label={label} value={value} color={color} description={description} />)}
           </div>
-          {!appliedResolution && <p style={styles.muted}>No resolution has been applied in this demo yet. Open Resolutions & Voting and calculate a passing vote to see the changes.</p>}
         </section>
       )}
 
-      {message && (
-        <div role="status" style={{ ...styles.panel, borderColor: "#287aa6" }}>
-          <MessageSquare size={17} style={{ verticalAlign: "middle", color: "#38bdf8" }} /> {message}
+      <section style={panelStyle}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "center",
+            flexWrap: "wrap",
+            marginBottom: 22,
+          }}
+        >
+          <h2 style={{ margin: 0 }}>⚠ Active crisis briefing</h2>
+          <button
+            style={buttonStyle}
+            onClick={() => setShowCreateForm((current) => !current)}
+            aria-expanded={showCreateForm}
+          >
+            {showCreateForm ? "Cancel" : "+ Create crisis"}
+          </button>
         </div>
-      )}
-      <p style={{ ...styles.muted, fontSize: 12 }}>
-        Demo limitation: crises, votes and scores are stored in React state and reset when this component is fully unmounted or the page is refreshed. Sample delegate votes are fictional. A backend is required for persistent shared sessions and authoritative voting.
+
+        {showCreateForm && (
+          <form
+            onSubmit={createCrisis}
+            style={{
+              ...panelStyle,
+              background: "#09192b",
+              marginBottom: 24,
+            }}
+          >
+            <h3>Create a crisis</h3>
+
+            <label htmlFor="crisis-title">Title</label>
+            <input
+              id="crisis-title"
+              value={newTitle}
+              onChange={(event) => setNewTitle(event.target.value)}
+              style={inputStyle}
+              maxLength={120}
+              required
+              placeholder="Enter crisis title"
+            />
+
+            <label htmlFor="crisis-category" style={{ display: "block", marginTop: 14 }}>
+              Category
+            </label>
+            <select
+              id="crisis-category"
+              value={newCategory}
+              onChange={(event) => setNewCategory(event.target.value)}
+              style={inputStyle}
+            >
+              <option>Cybersecurity</option>
+              <option>Economic</option>
+              <option>Humanitarian</option>
+              <option>Diplomatic</option>
+              <option>Environmental</option>
+            </select>
+
+            <label htmlFor="crisis-severity" style={{ display: "block", marginTop: 14 }}>
+              Severity
+            </label>
+            <select
+              id="crisis-severity"
+              value={newSeverity}
+              onChange={(event) => setNewSeverity(event.target.value)}
+              style={inputStyle}
+            >
+              <option>Low</option>
+              <option>Moderate</option>
+              <option>High</option>
+              <option>Critical</option>
+            </select>
+
+            <label htmlFor="crisis-description" style={{ display: "block", marginTop: 14 }}>
+              Description
+            </label>
+            <textarea
+              id="crisis-description"
+              value={newDescription}
+              onChange={(event) => setNewDescription(event.target.value)}
+              style={{ ...inputStyle, minHeight: 110, resize: "vertical" }}
+              maxLength={2000}
+              required
+              placeholder="Describe the crisis and its impact"
+            />
+
+            <button type="submit" style={{ ...buttonStyle, marginTop: 16 }}>
+              Create crisis
+            </button>
+          </form>
+        )}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 230px), 1fr))",
+            gap: 14,
+          }}
+        >
+          {crises.map((crisis) => {
+            const selected = crisis.id === selectedId;
+
+            return (
+              <button
+                key={crisis.id}
+                onClick={() => {
+                  setSelectedId(crisis.id);
+                  setNotice(`Selected crisis: ${crisis.title}.`);
+                }}
+                aria-pressed={selected}
+                style={{
+                  textAlign: "left",
+                  padding: 20,
+                  minHeight: 125,
+                  borderRadius: 14,
+                  border: selected
+                    ? "1px solid #16c7ff"
+                    : "1px solid #294b65",
+                  background: selected ? "#123750" : "#09192a",
+                  color: "#e0efff",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ color: "#40caff", marginBottom: 12 }}>
+                  {crisis.category} · {crisis.severity}
+                </div>
+                <strong style={{ fontSize: 18, lineHeight: 1.5 }}>
+                  {crisis.title}
+                </strong>
+                <div style={{ color: "#8caac2", marginTop: 10, fontSize: 13 }}>
+                  {crisis.status} · {crisis.responses.length} responses
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedCrisis && (
+          <article
+            style={{
+              ...panelStyle,
+              marginTop: 24,
+              marginBottom: 0,
+              background: "#09192a",
+            }}
+          >
+            <div
+              style={{
+                color: "#39c9ff",
+                letterSpacing: 3,
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              SITUATION REPORT
+            </div>
+
+            <h2>{selectedCrisis.title}</h2>
+            <p style={{ color: "#a1b9ce", lineHeight: 1.8 }}>
+              {selectedCrisis.description}
+            </p>
+
+            <p>
+              Status:{" "}
+              <strong
+                style={{
+                  color:
+                    selectedCrisis.status === "Resolved"
+                      ? "#5ee0a0"
+                      : "#ffc86a",
+                }}
+              >
+                {selectedCrisis.status}
+              </strong>
+            </p>
+
+            <h3>Delegation response</h3>
+            <form onSubmit={submitResponse}>
+              <label htmlFor="response">Your country's proposed response</label>
+              <textarea
+                id="response"
+                value={responseText}
+                onChange={(event) => setResponseText(event.target.value)}
+                placeholder={`What should ${country} do about this crisis?`}
+                style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
+                maxLength={2000}
+                disabled={selectedCrisis.status === "Resolved"}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  marginTop: 14,
+                }}
+              >
+                <button
+                  type="submit"
+                  style={buttonStyle}
+                  disabled={selectedCrisis.status === "Resolved"}
+                >
+                  Submit response
+                </button>
+
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={resolveCrisis}
+                  disabled={selectedCrisis.status === "Resolved"}
+                >
+                  Mark resolved
+                </button>
+              </div>
+            </form>
+
+            {selectedCrisis.responses.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <h3>Response history</h3>
+                {selectedCrisis.responses.map((response, index) => (
+                  <div
+                    key={`${response.country}-${index}`}
+                    style={{
+                      borderTop: "1px solid #294b65",
+                      padding: "14px 0",
+                    }}
+                  >
+                    <strong>{response.country}</strong>
+                    <span style={{ color: "#8caac2" }}>
+                      {" "}· Turn {String(response.turn).padStart(2, "0")} ·{" "}
+                      {response.timestamp}
+                    </span>
+                    <p style={{ color: "#b3c9dd", lineHeight: 1.7 }}>
+                      {response.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        )}
+      </section>
+
+      <p style={{ color: "#7994ad", fontSize: 12, textAlign: "center" }}>
+        Practice demo · Changes are stored in component state and reset on page
+        reload. No backend actions or real world consequences are performed.
       </p>
-    </div>
+    </main>
   );
 }
