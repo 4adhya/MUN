@@ -220,3 +220,98 @@ def test_app_endpoints_still_work_without_persistence_configured():
     client = TestClient(app)
     r = client.post("/conference/create", json={"name": "X", "committee": "UNSC", "topic": "t"})
     assert r.status_code == 201
+
+
+# --- default-on application configuration (Phase 10 enabled automatically) ---------------------
+import backend.main as main
+from backend.persistence.db import DEFAULT_DATABASE_URL, resolve_database_url
+from backend.persistence.service import NullPersistenceService, PersistenceService
+
+
+def _clear_persistence_env(monkeypatch):
+    monkeypatch.delenv("MUN_PERSISTENCE", raising=False)
+    monkeypatch.delenv("MUN_DATABASE_URL", raising=False)
+
+
+def test_default_database_url_is_relative_sqlite(monkeypatch):
+    _clear_persistence_env(monkeypatch)
+    assert DEFAULT_DATABASE_URL == "sqlite:///./mun.db"
+    assert resolve_database_url() == "sqlite:///./mun.db"
+
+
+def test_persistence_is_enabled_by_default_with_no_env(monkeypatch):
+    _clear_persistence_env(monkeypatch)
+    assert main._persistence_enabled() is True
+
+
+def test_mun_persistence_false_disables(monkeypatch):
+    _clear_persistence_env(monkeypatch)
+    for value in ("false", "0", "no", "off", "FALSE", "Off"):
+        monkeypatch.setenv("MUN_PERSISTENCE", value)
+        assert main._persistence_enabled() is False, value
+
+
+def test_mun_database_url_overrides_default(monkeypatch):
+    _clear_persistence_env(monkeypatch)
+    monkeypatch.setenv("MUN_DATABASE_URL", "sqlite:///custom.db")
+    assert resolve_database_url() == "sqlite:///custom.db"
+    # An explicit URL also keeps persistence enabled.
+    assert main._persistence_enabled() is True
+
+
+def test_configure_persistence_defaults_to_sqlite_and_creates_db(monkeypatch, tmp_path):
+    """With no env vars, configure_persistence() must enable SQLite and create ./mun.db automatically."""
+    _clear_persistence_env(monkeypatch)
+    monkeypatch.chdir(tmp_path)  # so the relative ./mun.db lands in a temp dir, not the repo
+    try:
+        enabled = main.configure_persistence()
+        assert enabled is True
+        # The shared service now has a real persistence collaborator.
+        assert isinstance(main.conference_service.persistence, PersistenceService)
+        # A conference created now is persisted to the default file, which is created on disk.
+        snap = main.conference_service.create("Default On", "UNSC", "t")
+        assert (tmp_path / "mun.db").exists()
+        assert snap.id in main.conference_service.persistence.repository.list_conference_ids()
+    finally:
+        main.conference_service.set_persistence(NullPersistenceService())
+
+
+def test_default_persistence_round_trips_without_env(monkeypatch, tmp_path):
+    """A conference + event persists and reloads with NO environment variables set."""
+    _clear_persistence_env(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    try:
+        assert main.configure_persistence() is True
+        svc = main.conference_service
+        snap = svc.create("No-Env Durability", "UNSC", "topic")
+        cid = snap.id
+        delegate = svc.join(cid, "India delegation", "PARTICIPANT", "India")
+        svc.join(cid, "Jury", "JURY")
+        svc.start(cid)
+        svc.advance(cid)  # ROLL_CALL -> OPENING_SPEECHES
+        svc.submit_speech(cid, delegate.id, delegate.country_code, "India calls for calm.")
+
+        # Rebuild from the default SQLite file into a fresh service (simulated restart).
+        from backend.conference_service import ConferenceService
+        from backend.persistence.db import create_db_engine, create_session_factory, init_db
+        from backend.persistence.repository import SqlAlchemyConferenceRepository
+
+        engine = create_db_engine()  # resolves to sqlite:///./mun.db in tmp_path
+        init_db(engine)
+        fresh = ConferenceService()
+        fresh.set_persistence(PersistenceService(SqlAlchemyConferenceRepository(create_session_factory(engine))))
+        assert fresh.load_persisted() == 1
+        reloaded = fresh.get(cid)
+        assert reloaded.current_phase == "OPENING_SPEECHES"
+        assert [e.type for e in fresh._get(cid).world.events] == ["conference_start", "speech_submitted"]
+    finally:
+        main.conference_service.set_persistence(NullPersistenceService())
+
+
+def test_mun_persistence_false_keeps_app_in_memory(monkeypatch, tmp_path):
+    _clear_persistence_env(monkeypatch)
+    monkeypatch.setenv("MUN_PERSISTENCE", "false")
+    monkeypatch.chdir(tmp_path)
+    assert main.configure_persistence() is False
+    # No database file is created when persistence is explicitly disabled.
+    assert not (tmp_path / "mun.db").exists()

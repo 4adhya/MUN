@@ -18,7 +18,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_SQLITE_PATH = REPO_ROOT / "mun.db"
+# SQLite is the default backend. The default URL is relative so a plain run creates ./mun.db in the
+# process's working directory (the project root when launched with `uvicorn backend.main:app`).
+DEFAULT_DATABASE_URL = "sqlite:///./mun.db"
 
 
 class Base(DeclarativeBase):
@@ -26,12 +28,18 @@ class Base(DeclarativeBase):
 
 
 def resolve_database_url(url: Optional[str] = None) -> str:
+    """The database URL to use.
+
+    Precedence: an explicit ``url`` argument, then ``MUN_DATABASE_URL``, then the default SQLite URL
+    (``sqlite:///./mun.db``). ``MUN_DATABASE_URL`` is the single seam a future PostgreSQL deployment
+    uses; nothing else here is SQLite-specific.
+    """
     if url:
         return url
     env = os.getenv("MUN_DATABASE_URL", "").strip()
     if env:
         return env
-    return f"sqlite:///{DEFAULT_SQLITE_PATH}"
+    return DEFAULT_DATABASE_URL
 
 
 def create_db_engine(url: Optional[str] = None) -> Engine:

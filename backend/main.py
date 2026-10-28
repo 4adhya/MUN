@@ -105,22 +105,29 @@ app.add_middleware(
 )
 
 
-def _persistence_enabled() -> bool:
-    """Phase 10 persistence is OPT-IN: on only when MUN_PERSISTENCE is truthy or MUN_DATABASE_URL is set.
+_PERSISTENCE_DISABLE_VALUES = {"0", "false", "no", "off"}
 
-    This keeps the default (and the test suite) on the unchanged in-memory behaviour; a deployment
-    turns durability on with one environment variable and gets reload-after-restart for free.
+
+def _persistence_enabled() -> bool:
+    """Phase 10 persistence is ON BY DEFAULT (SQLite).
+
+    It is active on startup with no configuration at all, using the default URL ``sqlite:///./mun.db``.
+    Precedence:
+      * ``MUN_PERSISTENCE`` set to a falsey value (false/0/no/off) explicitly DISABLES it;
+      * otherwise persistence is enabled, using ``MUN_DATABASE_URL`` when provided, else the default.
     """
-    if os.getenv("MUN_DATABASE_URL", "").strip():
-        return True
-    return os.getenv("MUN_PERSISTENCE", "").strip().lower() in ("1", "true", "yes", "on")
+    flag = os.getenv("MUN_PERSISTENCE", "").strip().lower()
+    if flag in _PERSISTENCE_DISABLE_VALUES:
+        return False
+    return True
 
 
 def configure_persistence() -> bool:
     """Wire the conference service to a SQLite-backed repository and rehydrate stored conferences.
 
     Returns True when persistence was enabled. Safe to call more than once. SQLite only (Phase 10);
-    the engine/URL comes from MUN_DATABASE_URL (the same seam a future PostgreSQL deployment uses).
+    the engine/URL comes from ``MUN_DATABASE_URL`` when set, else the default ``sqlite:///./mun.db``
+    (``MUN_DATABASE_URL`` is the same seam a future PostgreSQL deployment uses).
     """
     if not _persistence_enabled():
         return False
