@@ -29,7 +29,6 @@ export const aiFailureLabel = (failureType) =>
 const UNREACHABLE =
   "Can't reach the simulation server. Make sure the backend is running and try again.";
 
-
 async function request(path, { method = "GET", body, timeoutMs = 90000 } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -99,7 +98,6 @@ async function request(path, { method = "GET", body, timeoutMs = 90000 } = {}) {
   return data;
 }
 
-
 export const getHealth = () => request("/health");
 
 export const getWorld = () => request("/world");
@@ -113,7 +111,6 @@ export const getEvents = (limit = 100) =>
 // Read-only: summarises the recorded simulation. Safe to call repeatedly.
 export const getReport = () => request("/simulation/report");
 
-
 // The backend allows Gemma up to ~55 s in total; wait a bit longer so its real error reaches the UI.
 export const proposeAI = (countryId, situation, { timeoutMs = 70000 } = {}) =>
   request("/ai/propose", {
@@ -125,14 +122,12 @@ export const proposeAI = (countryId, situation, { timeoutMs = 70000 } = {}) =>
     timeoutMs,
   });
 
-
 export const askAdvisor = (countryId, message, history = [], { timeoutMs = 70000 } = {}) =>
   request("/ai/advisor", {
     method: "POST",
     body: { country_id: countryId, message, history },
     timeoutMs,
   });
-
 
 export const sanction = (actor, target) =>
   request("/actions/sanction", {
@@ -155,4 +150,212 @@ export const aid = (actor, target, amount) =>
 export const resetSimulation = () =>
   request("/simulation/reset", {
     method: "POST",
+  });
+
+// ---------------------------------------------------------------------------
+// Phase 11: the MUN conference API (the backend is the single source of truth
+// for phase, status, world metrics, speeches, negotiations, resolutions,
+// voting and crises). These simply mirror the FastAPI routes in backend/.
+// ---------------------------------------------------------------------------
+
+// --- Conference lifecycle --------------------------------------------------
+export const createConference = (name, committee, topic) =>
+  request("/conference/create", {
+    method: "POST",
+    body: { name, committee, topic },
+  });
+
+export const joinConference = (conferenceId, { name, role, country } = {}) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/join`, {
+    method: "POST",
+    body: country ? { name, role, country } : { name, role },
+  });
+
+export const getConference = (conferenceId) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}`);
+
+export const startConference = (conferenceId) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/start`, {
+    method: "POST",
+  });
+
+// The backend always decides the next phase; `toPhase` is only an optional stale-screen guard.
+export const advanceConference = (conferenceId, toPhase) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/advance`, {
+    method: "POST",
+    body: toPhase ? { to_phase: toPhase } : undefined,
+  });
+
+export const checkConferenceAction = (conferenceId, action) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/actions/check`, {
+    method: "POST",
+    body: { action },
+  });
+
+export const getConferenceReport = (conferenceId) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/report`);
+
+// --- Speeches and the speaker queue ----------------------------------------
+export const submitSpeech = (conferenceId, participantId, countryCode, text) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/speech`, {
+    method: "POST",
+    body: { participant_id: participantId, country_code: countryCode, text },
+  });
+
+export const listSpeeches = (conferenceId, { phase, countryCode } = {}) => {
+  const params = new URLSearchParams();
+  if (phase) params.set("phase", phase);
+  if (countryCode) params.set("country_code", countryCode);
+  const query = params.toString();
+  return request(`/conference/${encodeURIComponent(conferenceId)}/speeches${query ? `?${query}` : ""}`);
+};
+
+export const getSpeakers = (conferenceId) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/speakers`);
+
+export const nextSpeaker = (conferenceId) =>
+  request(`/conference/${encodeURIComponent(conferenceId)}/speaker/next`, {
+    method: "POST",
+  });
+
+// --- Negotiations ----------------------------------------------------------
+export const proposeNegotiation = (conferenceId, participantId, receiver, proposal) =>
+  request("/negotiation/propose", {
+    method: "POST",
+    body: { conference_id: conferenceId, participant_id: participantId, receiver, proposal },
+  });
+
+export const respondToNegotiation = (negotiationId, participantId, action, counterOffer) =>
+  request(`/negotiation/${encodeURIComponent(negotiationId)}/respond`, {
+    method: "POST",
+    body: counterOffer
+      ? { participant_id: participantId, action, counter_offer: counterOffer }
+      : { participant_id: participantId, action },
+  });
+
+export const listNegotiations = (conferenceId, { status, countryCode } = {}) => {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (countryCode) params.set("country_code", countryCode);
+  const query = params.toString();
+  return request(`/conference/${encodeURIComponent(conferenceId)}/negotiations${query ? `?${query}` : ""}`);
+};
+
+// --- Resolutions and voting ------------------------------------------------
+export const createResolution = (conferenceId, participantId, title, sponsors = []) =>
+  request("/resolution", {
+    method: "POST",
+    body: { conference_id: conferenceId, participant_id: participantId, title, sponsors },
+  });
+
+export const getResolution = (resolutionId) =>
+  request(`/resolution/${encodeURIComponent(resolutionId)}`);
+
+export const addClause = (resolutionId, participantId, type, text) =>
+  request(`/resolution/${encodeURIComponent(resolutionId)}/clause`, {
+    method: "POST",
+    body: { participant_id: participantId, type, text },
+  });
+
+export const submitResolution = (resolutionId, participantId) =>
+  request(`/resolution/${encodeURIComponent(resolutionId)}/submit`, {
+    method: "POST",
+    body: { participant_id: participantId },
+  });
+
+export const reviewResolution = (resolutionId) =>
+  request(`/resolution/${encodeURIComponent(resolutionId)}/review`, {
+    method: "POST",
+  });
+
+export const voteOnResolution = (resolutionId, participantId, countryCode, vote) =>
+  request(`/resolution/${encodeURIComponent(resolutionId)}/vote`, {
+    method: "POST",
+    body: { participant_id: participantId, country_code: countryCode, vote },
+  });
+
+export const listResolutions = (conferenceId, { status } = {}) => {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const query = params.toString();
+  return request(`/conference/${encodeURIComponent(conferenceId)}/resolutions${query ? `?${query}` : ""}`);
+};
+
+// --- Crises ----------------------------------------------------------------
+export const listCrisisTemplates = () => request("/crisis-templates");
+
+export const createCrisis = (conferenceId, participantId, { templateId, title, description, severity, optionTypes } = {}) => {
+  const body = { conference_id: conferenceId, participant_id: participantId };
+  if (templateId) body.template_id = templateId;
+  if (title) body.title = title;
+  if (description) body.description = description;
+  if (severity) body.severity = severity;
+  if (optionTypes) body.option_types = optionTypes;
+  return request("/crisis", { method: "POST", body });
+};
+
+export const getCrisis = (crisisId) =>
+  request(`/crisis/${encodeURIComponent(crisisId)}`);
+
+export const respondToCrisis = (crisisId, participantId, countryCode, optionId) =>
+  request(`/crisis/${encodeURIComponent(crisisId)}/respond`, {
+    method: "POST",
+    body: { participant_id: participantId, country_code: countryCode, option_id: optionId },
+  });
+
+export const resolveCrisis = (crisisId, participantId) =>
+  request(`/crisis/${encodeURIComponent(crisisId)}/resolve`, {
+    method: "POST",
+    body: { participant_id: participantId },
+  });
+
+export const listCrises = (conferenceId, { status } = {}) => {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const query = params.toString();
+  return request(`/conference/${encodeURIComponent(conferenceId)}/crises${query ? `?${query}` : ""}`);
+};
+
+// --- Conference AI roles (advisory / proposal-only) ------------------------
+// Each returns { status, advisory, executed, output, ... } on success, or throws
+// an ApiError carrying failureType on an AI failure. An AI failure is never a decision.
+export const aiStrategy = (conferenceId, countryCode, focus, opts = {}) =>
+  request("/ai/mun/strategy", {
+    method: "POST",
+    body: focus ? { conference_id: conferenceId, country_code: countryCode, focus } : { conference_id: conferenceId, country_code: countryCode },
+    timeoutMs: opts.timeoutMs ?? 70000,
+  });
+
+export const aiSpeech = (conferenceId, countryCode, speechType, { targetCode, brief } = {}, opts = {}) => {
+  const body = { conference_id: conferenceId, country_code: countryCode, speech_type: speechType };
+  if (targetCode) body.target_code = targetCode;
+  if (brief) body.brief = brief;
+  return request("/ai/mun/speech", { method: "POST", body, timeoutMs: opts.timeoutMs ?? 70000 });
+};
+
+export const aiCrisis = (conferenceId, countryCode, crisis, opts = {}) =>
+  request("/ai/mun/crisis", {
+    method: "POST",
+    body: { conference_id: conferenceId, country_code: countryCode, crisis },
+    timeoutMs: opts.timeoutMs ?? 70000,
+  });
+
+export const aiResolutionClauses = (conferenceId, countryCode, resolutionId, focus, opts = {}) => {
+  const body = { conference_id: conferenceId, country_code: countryCode, resolution_id: resolutionId };
+  if (focus) body.focus = focus;
+  return request("/ai/mun/resolution/clauses", { method: "POST", body, timeoutMs: opts.timeoutMs ?? 70000 });
+};
+
+export const aiChair = (conferenceId, question, opts = {}) =>
+  request("/ai/mun/chair", {
+    method: "POST",
+    body: question ? { conference_id: conferenceId, question } : { conference_id: conferenceId },
+    timeoutMs: opts.timeoutMs ?? 70000,
+  });
+
+export const aiJudge = (conferenceId, opts = {}) =>
+  request("/ai/mun/judge", {
+    method: "POST",
+    body: { conference_id: conferenceId },
+    timeoutMs: opts.timeoutMs ?? 70000,
   });

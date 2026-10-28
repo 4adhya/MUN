@@ -1497,3 +1497,30 @@
 
   .cr-action-button { min-height: 76px; }
 }
+
+/* Phase 11: backend-authoritative phase bar + chair controls */
+.cr-phase-bar { margin: 14px 0 6px; padding: 12px 16px; border: 1px solid #234762; border-radius: 12px; background: rgba(8, 24, 42, 0.86); display: flex; flex-direction: column; gap: 10px; }
+.cr-phase-loading, .cr-phase-error { display: flex; align-items: center; gap: 9px; font-size: 12px; color: #9fc0db; }
+.cr-phase-error { color: #ffb1a9; flex-wrap: wrap; }
+.cr-phase-steps { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; }
+.cr-phase-step { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .4px; color: #6c8299; text-transform: uppercase; }
+.cr-phase-step .cr-phase-dot { width: 8px; height: 8px; border-radius: 50%; background: #223a52; }
+.cr-phase-step.is-done { color: #9bdcff; }
+.cr-phase-step.is-done .cr-phase-dot { background: #2e86c1; }
+.cr-phase-step.is-current { color: #7cf2c6; }
+.cr-phase-step.is-current .cr-phase-dot { background: #3bd5a7; box-shadow: 0 0 10px #3bd5a7aa; }
+.cr-phase-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cr-phase-current { font-size: 12px; color: #c3d9ec; }
+.cr-phase-current strong { color: #eaf6ff; }
+.cr-phase-notice { position: relative; padding: 9px 30px 9px 11px; border-radius: 7px; font-size: 12px; }
+.cr-phase-notice.success { background: #0d352e; color: #8aebc7; }
+.cr-phase-notice.error { background: #3a1e24; color: #ffb1a9; }
+.cr-phase-notice .cr-modal-close { position: absolute; top: 6px; right: 6px; }
+.cr-phase-guide { font-size: 12px; color: #a8c2d8; line-height: 1.7; }
+.cr-phase-guide .cr-empty-note { color: #7890a6; font-style: italic; }
+.cr-record-list { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+.cr-record-list li { color: #b7cfe3; }
+.cr-record-list strong { color: #eaf6ff; }
+.cr-action-button.is-disabled, .cr-action-button:disabled { opacity: .5; cursor: not-allowed; }
+.cr-spin { animation: crSpin 1s linear infinite; }
+@keyframes crSpin { to { transform: rotate(360deg); } }

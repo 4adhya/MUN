@@ -4,25 +4,21 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle,
-  ArrowDownRight,
   ArrowRight,
   Bot,
   Check,
   Clock3,
   FileText,
   Handshake,
-  HeartHandshake,
   Hand,
-  Mic,
+  Loader,
   MessageSquare,
   Radio,
   Send,
   ThumbsUp,
   UserRound,
   Shield,
-  Swords,
   TrendingUp,
-  Users,
   X,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
@@ -30,12 +26,9 @@ import "./ConferenceRoom.css";
 import {
   proposeAI,
   aiFailureLabel,
-  sanction,
-  alliance,
-  aid,
-  getWorld,
-  getEvents,
+  submitSpeech,
 } from "../api/client.js";
+import { useConference, phaseLabel, PHASE_SEQUENCE } from "../hooks/useConference.js";
 
 const OPENING_MOVES = {
   India: {
@@ -112,60 +105,14 @@ const OPENING_MOVES = {
   },
 };
 
-const RESPONSE_OPTIONS = [
-  {
-    id: "negotiate",
-    title: "Call emergency talks",
-    subtitle: "Seek a negotiated settlement",
-    icon: MessageSquare,
-    tone: "blue",
-    tension: -8,
-    influence: 2,
-    result:
-      "You request emergency diplomatic talks and propose a temporary pause while both delegations negotiate.",
-  },
-  {
-    id: "counter",
-    title: "Counter-sanctions",
-    subtitle: "Apply reciprocal economic pressure",
-    icon: Swords,
-    tone: "red",
-    tension: 12,
-    influence: 3,
-    result:
-      "Your delegation announces reciprocal measures. Pressure increases, and other countries watch for escalation.",
-  },
-  {
-    id: "alliance",
-    title: "Seek coalition support",
-    subtitle: "Build a united diplomatic front",
-    icon: Users,
-    tone: "purple",
-    tension: 1,
-    influence: 6,
-    result:
-      "You approach other delegations to coordinate a response and increase diplomatic leverage.",
-  },
-  {
-    id: "concede",
-    title: "Offer a compromise",
-    subtitle: "Trade concessions for relief",
-    icon: HeartHandshake,
-    tone: "green",
-    tension: -5,
-    influence: -1,
-    result:
-      "You offer a limited policy concession in exchange for a pause in sanctions and a path toward settlement.",
-  },
-];
-
 export default function ConferenceRoom({ country, onExit, onAdvisor }) {
+  // The backend is the single source of truth for phase/status/world/metrics/events.
+  const conf = useConference(country?.name);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiElapsed, setAiElapsed] = useState(0);
   const [aiProposal, setAiProposal] = useState(null);
   const [aiError, setAiError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
-  const [actionMessage, setActionMessage] = useState("");
 
   // Real-world agenda themes are used as context; actions and dialogue remain simulated.
   // Unknown countries receive a country-dependent scenario instead of the same generic topic.
@@ -249,98 +196,32 @@ export default function ConferenceRoom({ country, onExit, onAdvisor }) {
     0
   );
   const fallbackScenario = REAL_WORLD_SCENARIOS[countryHash % REAL_WORLD_SCENARIOS.length];
+  // `opening` is now used only as display framing (the scenario the delegate is briefed on).
+  // It no longer drives any phase, tension or opponent state — those come from the backend.
   const opening = OPENING_MOVES[country.name] || {
     ...fallbackScenario,
     opponent: fallbackScenario.opponent === country.name ? "United Nations Security Council" : fallbackScenario.opponent,
     flag: fallbackScenario.opponent === country.name ? "🇺🇳" : fallbackScenario.flag,
   };
 
-  const [phase, setPhase] = useState("player");
-  const [selectedResponse, setSelectedResponse] = useState(null);
-  const [timeline, setTimeline] = useState([
-    {
-      id: 1,
-      type: "opponent",
-      actor: opening.opponent,
-      flag: opening.flag,
-      title: opening.action,
-      detail: opening.reason,
-      time: "Opening move",
-    },
-  ]);
-  const [tension, setTension] = useState(48);
-  const [influence, setInfluence] = useState(68);
-  const [turn, setTurn] = useState(1);
-  const [lastResponse, setLastResponse] = useState(null);
-  const [showOpening, setShowOpening] = useState(true);
+  // Backend-authoritative display values. Direction: higher tension is worse, higher influence (trust) is better.
+  const metrics = conf.metrics;
+  const tension = metrics ? Math.round(metrics.diplomatic_tension) : 0;
+  const influence = metrics ? Math.round(metrics.international_trust) : 0;
+  const phase = conf.phase; // the real MUN phase, decided by the backend
+  const turnNumber = conf.snapshot?.world?.turn ?? 1;
 
-  const respond = (option) => {
-    if (phase !== "player") return;
+  // The live record is derived from the conference's real backend events (newest first).
+  const timeline = conf.events.slice(0, 8).map((event, index) => ({
+    id: event.id ?? index,
+    type: event.actor && conf.myCountry && event.actor === conf.myCountry.country_id ? "player" : "opponent",
+    actor: event.actor || "Conference",
+    flag: "🏛️",
+    title: humanizeEventType(event.type),
+    detail: event.message,
+    time: `Turn ${String(event.turn ?? turnNumber).padStart(2, "0")}`,
+  }));
 
-    setSelectedResponse(option.id);
-    setLastResponse(option);
-    setPhase("opponent");
-
-    const playerMove = {
-      id: Date.now(),
-      type: "player",
-      actor: country.name,
-      flag: country.flag,
-      title: option.title,
-      detail: option.result,
-      time: `Turn ${turn} · Your move`,
-    };
-
-    setTimeline((items) => [playerMove, ...items]);
-    setTension((value) =>
-      Math.max(5, Math.min(95, value + option.tension))
-    );
-    setInfluence((value) =>
-      Math.max(5, Math.min(95, value + option.influence))
-    );
-
-    window.setTimeout(() => {
-      const reaction = {
-        negotiate: {
-          title: "Conditional talks proposed",
-          detail:
-            `${opening.opponent} acknowledges the request but demands progress on its stated concerns before sanctions can be suspended.`,
-        },
-        counter: {
-          title: "Retaliatory measures announced",
-          detail:
-            `${opening.opponent} responds to the escalation with additional diplomatic pressure and calls on partners to review their position.`,
-        },
-        alliance: {
-          title: "Coalition discussions begin",
-          detail:
-            `${opening.opponent} begins consulting other delegations and signals that it may consider a multilateral discussion.`,
-        },
-        concede: {
-          title: "Limited pause offered",
-          detail:
-            `${opening.opponent} signals willingness to discuss a temporary pause but says a final settlement will require further negotiations.`,
-        },
-      }[option.id];
-
-      setTimeline((items) => [
-        {
-          id: Date.now() + 1,
-          type: "opponent",
-          actor: opening.opponent,
-          flag: opening.flag,
-          title: reaction.title,
-          detail: reaction.detail,
-          time: `Turn ${turn} · Opponent response`,
-        },
-        ...items,
-      ]);
-
-      setPhase("player");
-      setSelectedResponse(null);
-      setTurn((value) => value + 1);
-    }, 1100);
-  };
 const toCountryId = (name) =>
   name.trim().toLowerCase().replace(/\s+/g, "-");
 
@@ -349,7 +230,6 @@ const requestAIProposal = async () => {
   setAiElapsed(0);
   setAiError("");
   setAiProposal(null);
-  setActionMessage("");
 
   // Live seconds counter so a slow answer never looks like a frozen button.
   const startedAt = Date.now();
@@ -401,71 +281,6 @@ setAiProposal(result);
   }
 };
 
-const approveAIProposal = async () => {
-  const decision = aiProposal?.decision;
-
-  if (
-    !decision ||
-    decision.decision === "NO_ACTION" ||
-    !decision.target
-  ) {
-    return;
-  }
-
-  setActionLoading(true);
-  setActionMessage("");
-
-  try {
-    const actor = toCountryId(country.name);
-
-    // Gemma returns the canonical country name, not its ID.
-    // Convert it to the backend's lowercase country ID.
-    const target = toCountryId(decision.target);
-
-    let result;
-
-    if (decision.decision === "SANCTION") {
-      result = await sanction(actor, target);
-    } else if (decision.decision === "ALLIANCE") {
-      result = await alliance(actor, target);
-    } else if (decision.decision === "AID") {
-      result = await aid(actor, target, 10);
-    } else {
-      throw new Error("Unsupported decision type.");
-    }
-
-    setActionMessage(
-      `Action executed: ${decision.decision} involving ${decision.target}.`
-    );
-
-    setTimeline((items) => [
-      {
-        id: Date.now(),
-        type: "player",
-        actor: country.name,
-        flag: country.flag,
-        title: `${decision.decision}: ${decision.target}`,
-        detail: result.event?.message || decision.reason,
-        time: "Approved AI action",
-      },
-      ...items,
-    ]);
-
-    // Fetch authoritative state after the action.
-    // These calls confirm the backend now has the updated world/events.
-    await Promise.all([getWorld(), getEvents()]);
-  } catch (error) {
-    setActionMessage(
-      `Action was not executed: ${
-        error.message || "Please try again."
-      }`
-    );
-  } finally {
-    setActionLoading(false);
-  }
-};
-
-
   // UI-only state for the cinematic conference-room presentation.
   const [raisedHand, setRaisedHand] = useState(false);
   const [quickNotes, setQuickNotes] = useState("");
@@ -516,40 +331,20 @@ const approveAIProposal = async () => {
     { name: "United States", flag: "🇺🇸" },
   ].filter((item) => item.name !== country.name);
 
-  const addRoomEvent = (event) => {
-    setTimeline((items) => [{ id: Date.now(), ...event }, ...items]);
-  };
+  // Whether the current backend phase permits a given action type (drives button disabled states).
+  const phaseAllows = (action) => conf.allowedActions.includes(action);
 
   const handleRaiseHand = () => {
     const nextRaised = !raisedHand;
     setRaisedHand(nextRaised);
-    if (nextRaised) {
-      addRoomEvent({
-        type: "player",
-        actor: country.name,
-        flag: country.flag || "🌐",
-        title: "Requested to speak",
-        detail: `${country.name} raised a hand to request the floor.`,
-        time: `Turn ${turn} · Just now`,
-      });
-      notifyRoom(`${country.name} requested the floor.`);
-    } else {
-      notifyRoom("Your raised hand was lowered.");
-    }
+    notifyRoom(nextRaised ? `${country.name} requested the floor.` : "Your raised hand was lowered.");
   };
 
   const handleSupport = () => {
-    addRoomEvent({
-      type: "player",
-      actor: country.name,
-      flag: country.flag || "🌐",
-      title: "Supported the current statement",
-      detail: `${country.name} signalled support during the discussion of ${opening.issue.toLowerCase()}.`,
-      time: `Turn ${turn} · Just now`,
-    });
     notifyRoom(`${country.name} signalled support.`);
   };
 
+  // A statement is a real SPEECH submitted to the backend, only valid in a speaking phase.
   const submitRoomAction = async (event) => {
     event.preventDefault();
     const kind = roomModal;
@@ -557,58 +352,42 @@ const approveAIProposal = async () => {
     if (kind === "statement") {
       const statement = roomDraft.trim();
       if (!statement) return;
-      addRoomEvent({
-        type: "player",
-        actor: country.name,
-        flag: country.flag || "🌐",
-        title: "Made a statement",
-        detail: statement,
-        time: `Turn ${turn} · Just now`,
-      });
-      setRoomDraft("");
-      setRoomModal("");
-      notifyRoom(`${country.name}'s statement was added to the proceedings.`);
+      if (!conf.conferenceId || !conf.delegate || !conf.myCountryCode) {
+        notifyRoom("The conference is not ready yet.");
+        return;
+      }
+      if (!phaseAllows("SPEECH")) {
+        notifyRoom(`Speeches are not open during ${phaseLabel(phase)}. Advance to a speaking phase first.`);
+        return;
+      }
+      setActionLoading(true);
+      try {
+        await conf.runAction(
+          () => submitSpeech(conf.conferenceId, conf.delegate.id, conf.myCountryCode, statement),
+          `${country.name} delivered a statement.`
+        );
+        setRoomDraft("");
+        setRoomModal("");
+        notifyRoom(`${country.name}'s statement was recorded in the conference.`);
+      } catch (error) {
+        notifyRoom(error?.message || "The statement could not be submitted.");
+      } finally {
+        setActionLoading(false);
+      }
       return;
     }
 
-    if (!roomTarget || roomTarget === country.name) {
-      notifyRoom("Choose another country for this proposal.");
-      return;
-    }
-
-    setActionLoading(true);
-    setActionMessage("");
-    try {
-      const actorId = toCountryId(country.name);
-      const targetId = toCountryId(roomTarget);
-      const result = kind === "alliance"
-        ? await alliance(actorId, targetId)
-        : await sanction(actorId, targetId);
-      const title = kind === "alliance"
-        ? `Alliance proposal to ${roomTarget}`
-        : `Sanctions proposal targeting ${roomTarget}`;
-      const detail = result?.event?.message || (kind === "alliance"
-        ? `${country.name} submitted an alliance proposal to ${roomTarget}.`
-        : `${country.name} submitted a sanctions proposal targeting ${roomTarget}.`);
-
-      addRoomEvent({
-        type: "player",
-        actor: country.name,
-        flag: country.flag || "🌐",
-        title,
-        detail,
-        time: `Turn ${turn} · Just now`,
-      });
-      await Promise.all([getWorld(), getEvents()]);
-      setRoomModal("");
-      setRoomDraft("");
-      notifyRoom(detail);
-    } catch (error) {
-      notifyRoom(error?.message || "The proposal could not be submitted.");
-    } finally {
-      setActionLoading(false);
-    }
+    // Alliance / sanction room proposals are advisory in this single-delegate demo; the authoritative
+    // diplomatic outcomes come through the conference phases, the crisis engine and voting. We surface
+    // a clear notice rather than mutate the detached sandbox world and pretend it changed the conference.
+    notifyRoom(
+      "Use the Crisis Center, the AI advisor and the voting phase to drive real diplomatic outcomes in this session."
+    );
+    setRoomModal("");
   };
+  const phaseDone = conf.conferenceStatus === "COMPLETED";
+  const isResults = phase === "RESULTS" || phaseDone;
+
   return (
     <main className="cr-photo-page">
       <header className="cr-conference-header">
@@ -618,18 +397,60 @@ const approveAIProposal = async () => {
           <p>Discuss. Negotiate. Build alliances. Shape the world.</p>
         </div>
         <div className="cr-header-actions">
-          <span className="cr-turn-pill"><Clock3 size={15} /> TURN {String(turn).padStart(2, "0")}</span>
-          <span className="cr-time-pill"><Radio size={15} /> SESSION LIVE</span>
+          <span className="cr-turn-pill"><Clock3 size={15} /> TURN {String(turnNumber).padStart(2, "0")}</span>
+          <span className="cr-time-pill"><Radio size={15} /> {phaseDone ? "SESSION CLOSED" : "SESSION LIVE"}</span>
           <button className="cr-exit-button" onClick={() => setShowReport(true)}><FileText size={15} /> Generate Report</button>
           <button className="cr-exit-button" onClick={onExit}><X size={15} /> Exit conference</button>
         </div>
       </header>
 
+      {/* Backend-authoritative phase banner + chair's "advance" control. The backend decides the next phase. */}
+      <section className="cr-phase-bar" aria-label="Conference phase">
+        {conf.status === "loading" && (
+          <div className="cr-phase-loading"><Loader size={15} className="cr-spin" /> Starting the conference on the backend…</div>
+        )}
+        {conf.status === "error" && (
+          <div className="cr-phase-error" role="alert">
+            <AlertTriangle size={15} /> {conf.error || "Could not reach the conference backend."}
+            <button className="cr-secondary-button" onClick={conf.retry}>Retry</button>
+          </div>
+        )}
+        {conf.status === "ready" && (
+          <>
+            <ol className="cr-phase-steps">
+              {PHASE_SEQUENCE.map((step) => {
+                const reached = PHASE_SEQUENCE.indexOf(step) <= PHASE_SEQUENCE.indexOf(phase);
+                const current = step === phase;
+                return (
+                  <li key={step} className={`cr-phase-step ${current ? "is-current" : reached ? "is-done" : ""}`}>
+                    <span className="cr-phase-dot" />{phaseLabel(step)}
+                  </li>
+                );
+              })}
+            </ol>
+            <div className="cr-phase-actions">
+              <span className="cr-phase-current">Phase: <strong>{phaseLabel(phase)}</strong>{phaseDone ? " · Completed" : ""}</span>
+              {!phaseDone && (
+                <button className="cr-primary-button" onClick={conf.advance} disabled={conf.busy}>
+                  {conf.busy ? <><Loader size={14} className="cr-spin" /> Working…</> : <>{conf.nextPhase === "COMPLETED" ? "Finish & see results" : `Advance to ${phaseLabel(conf.nextPhase)}`} <ArrowRight size={14} /></>}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+        {conf.notice && (
+          <div className={`cr-phase-notice ${conf.notice.kind}`} role="status">
+            {conf.notice.text}
+            <button className="cr-modal-close" onClick={conf.dismissNotice} aria-label="Dismiss"><X size={14} /></button>
+          </div>
+        )}
+      </section>
+
       <section className="cr-status-strip" aria-label="Conference status">
         <div><span>YOUR DELEGATION</span><strong>{country.flag || "🌐"} {country.name}</strong></div>
-        <div><span>CURRENT TOPIC</span><strong>{opening.issue}</strong></div>
+        <div><span>CURRENT TOPIC</span><strong>{conf.snapshot?.topic || opening.issue}</strong></div>
         <div><span>GLOBAL TENSION</span><strong className={tension >= 60 ? "cr-tension-high" : ""}>{tension}/100</strong></div>
-        <div><span>DIPLOMATIC INFLUENCE</span><strong>{influence}/100</strong></div>
+        <div><span>INTERNATIONAL TRUST</span><strong>{influence}/100</strong></div>
       </section>
 
       <section className="cr-chamber-scene" aria-label="Diplomatic conference chamber">
@@ -662,7 +483,7 @@ const approveAIProposal = async () => {
           <div className="cr-tension-legend"><span><i className="high" /> High</span><span><i className="moderate" /> Moderate</span><span><i className="low" /> Low</span></div>
         </div>
 
-        <div className="cr-speech-bubble" key={`${opening.opponent}-${turn}`}>
+        <div className="cr-speech-bubble" key={`${opening.opponent}-${turnNumber}`}>
           <div className="cr-speech-bubble-heading"><span className="cr-flag-large">{opening.flag}</span><strong>{opening.opponent}</strong><span className="cr-speaking-dot" /></div>
           <p>{opening.reason}</p>
           <small>OPENING STATEMENT · FICTIONAL SCENARIO</small>
@@ -709,13 +530,13 @@ const approveAIProposal = async () => {
         </article>
 
         <article className="cr-actions-card">
-          <div className="cr-bottom-card-heading">YOUR ACTIONS <span>TURN {String(turn).padStart(2, "0")}</span></div>
+          <div className="cr-bottom-card-heading">YOUR ACTIONS <span>TURN {String(turnNumber).padStart(2, "0")}</span></div>
           <div className="cr-action-buttons">
-            <button className={`cr-action-button ${raisedHand ? "is-active" : ""}`} onClick={handleRaiseHand}><span><Hand size={22} /></span><strong>{raisedHand ? "Lower Hand" : "Raise Hand"}</strong></button>
-            <button className="cr-action-button" onClick={handleSupport}><span><ThumbsUp size={22} /></span><strong>Support</strong></button>
-            <button className="cr-action-button" onClick={() => { setRoomTarget(opening.opponent); setRoomModal("alliance"); }}><span><Handshake size={22} /></span><strong>Propose Alliance</strong></button>
-            <button className="cr-action-button" onClick={() => { setRoomTarget(opening.opponent); setRoomModal("sanctions"); }}><span><Shield size={22} /></span><strong>Propose Sanctions</strong></button>
-            <button className="cr-action-button" onClick={() => { setRoomDraft(""); setRoomModal("statement"); }}><span><MessageSquare size={22} /></span><strong>Make a Statement</strong></button>
+            <button className={`cr-action-button ${raisedHand ? "is-active" : ""}`} onClick={handleRaiseHand} disabled={conf.status !== "ready"}><span><Hand size={22} /></span><strong>{raisedHand ? "Lower Hand" : "Raise Hand"}</strong></button>
+            <button className="cr-action-button" onClick={handleSupport} disabled={conf.status !== "ready"}><span><ThumbsUp size={22} /></span><strong>Support</strong></button>
+            <button className="cr-action-button" onClick={() => { setRoomTarget(opening.opponent); setRoomModal("alliance"); }} disabled={conf.status !== "ready"}><span><Handshake size={22} /></span><strong>Propose Alliance</strong></button>
+            <button className="cr-action-button" onClick={() => { setRoomTarget(opening.opponent); setRoomModal("sanctions"); }} disabled={conf.status !== "ready"}><span><Shield size={22} /></span><strong>Propose Sanctions</strong></button>
+            <button className={`cr-action-button ${phaseAllows("SPEECH") ? "" : "is-disabled"}`} onClick={() => { setRoomDraft(""); setRoomModal("statement"); }} disabled={conf.status !== "ready" || !phaseAllows("SPEECH")} title={phaseAllows("SPEECH") ? "Deliver a speech" : `Speeches open in Opening Speeches / Moderated Caucus (now: ${phaseLabel(phase)})`}><span><MessageSquare size={22} /></span><strong>Make a Statement</strong></button>
           </div>
         </article>
 
@@ -729,15 +550,18 @@ const approveAIProposal = async () => {
       <section className="cr-support-grid">
         <article className="cr-support-panel cr-ai-panel">
           <div className="cr-support-title"><div><span className="cr-eyebrow">AI DIPLOMATIC ADVISOR</span><h2>Strategic recommendation</h2><p>Generate an AI proposal using the current scenario and your delegation.</p></div><span className={`cr-ai-status ${aiLoading ? "working" : ""}`}>{aiLoading ? "ANALYZING" : "READY"}</span></div>
-          <button className="cr-primary-button" onClick={requestAIProposal} disabled={aiLoading || actionLoading}><Bot size={16} /> {aiLoading ? `Waiting for AI… ${aiElapsed}s` : aiError ? "Retry AI proposal" : "Generate AI proposal"} <ArrowRight size={15} /></button>
+          <button className="cr-primary-button" onClick={requestAIProposal} disabled={aiLoading}><Bot size={16} /> {aiLoading ? `Waiting for AI… ${aiElapsed}s` : aiError ? "Retry AI proposal" : "Generate AI proposal"} <ArrowRight size={15} /></button>
           {aiError && <p className="cr-inline-error" role="alert">{aiError}</p>}
           {aiProposal && (
             <div className="cr-ai-result">
               <div className="cr-ai-result-meta"><span>{aiProposal.used_fallback ? "SAFE FALLBACK" : `AI GENERATED · ${aiProposal.model || "MODEL"}`}</span><strong>{aiProposal.decision.decision.replaceAll("_", " ")}</strong></div>
               <p>{aiProposal.decision.reason}</p>
-              <p><strong>Target:</strong> {aiProposal.decision.target || "No target"}</p>
-              {aiProposal.used_fallback ? <p className="cr-inline-error">This is a fallback response, not an AI-generated recommendation.</p> : aiProposal.decision.decision !== "NO_ACTION" && <button className="cr-primary-button" onClick={approveAIProposal} disabled={actionLoading}><Check size={15} /> {actionLoading ? "Executing…" : "Approve & execute"}</button>}
-              {actionMessage && <p className="cr-action-message" role="status">{actionMessage}</p>}
+              <p><strong>Suggested target:</strong> {aiProposal.decision.target || "No target"}</p>
+              {aiProposal.used_fallback
+                ? <p className="cr-inline-error">This is a fallback response, not an AI-generated recommendation.</p>
+                : aiProposal.decision.decision === "NO_ACTION"
+                  ? <p className="cr-action-message" role="status">The advisor recommends taking no action this turn (a deliberate choice, not a failure).</p>
+                  : <p className="cr-action-message" role="status">Advisory recommendation. Use the phase controls, Crisis Center and voting to act on it within the conference.</p>}
             </div>
           )}
           <button className="cr-text-button" onClick={onAdvisor}><MessageSquare size={14} /> Open diplomatic advisor</button>
@@ -751,15 +575,25 @@ const approveAIProposal = async () => {
       </section>
 
       <details className="cr-response-details">
-        <summary>More diplomatic response options <span>Existing response flow</span></summary>
-        <div className="cr-response-grid">
-          {RESPONSE_OPTIONS.map((option, index) => {
-            const Icon = option.icon;
-            return <button key={option.id} className={`cr-response-option ${option.tone} ${selectedResponse === option.id ? "selected" : ""}`} disabled={phase !== "player"} onClick={() => respond(option)}><span className="cr-response-number">0{index + 1}</span><span className="cr-response-icon"><Icon size={19} /></span><strong>{option.title}</strong><small>{option.subtitle}</small><span className="cr-response-cta">{phase === "opponent" && selectedResponse === option.id ? "Decision submitted" : "Choose response"}<ArrowRight size={13} /></span></button>;
-          })}
+        <summary>Phase guide & conference record <span>Backend-driven</span></summary>
+        <div className="cr-phase-guide">
+          <p>
+            The conference is in <strong>{phaseLabel(phase)}</strong>. {isResults
+              ? "Voting is closed — open the report to see the official results."
+              : conf.allowedActions.length
+                ? `Actions permitted now: ${conf.allowedActions.join(", ")}.`
+                : "This phase has no delegate actions — the chair advances it when ready."}
+          </p>
+          {conf.events.length === 0 ? (
+            <p className="cr-empty-note">No conference events recorded yet.</p>
+          ) : (
+            <ul className="cr-record-list">
+              {conf.events.slice(0, 6).map((event, index) => (
+                <li key={event.id ?? index}><strong>{humanizeEventType(event.type)}</strong> — {event.message}</li>
+              ))}
+            </ul>
+          )}
         </div>
-        {phase === "opponent" && <div className="cr-thinking-message"><Bot size={17} /><div><strong>Opponent delegations are responding</strong><p>Your decision has been recorded. The opposing delegation is preparing its next move…</p></div></div>}
-        {lastResponse && phase === "player" && <div className="cr-last-decision"><Check size={16} /><div><strong>Previous decision: {lastResponse.title}</strong><p>{lastResponse.result}</p></div></div>}
       </details>
 
       {roomToast && <div className="cr-toast" role="status"><Check size={16} /> {roomToast}</div>}
@@ -768,7 +602,7 @@ const approveAIProposal = async () => {
         <div className="cr-modal-backdrop" onClick={() => setRoomModal("")}>
           <form className="cr-action-modal" onSubmit={submitRoomAction} onClick={(event) => event.stopPropagation()}>
             <div className="cr-modal-heading"><div><span className="cr-eyebrow">DIPLOMATIC ACTION</span><h2>{roomModal === "alliance" ? "Propose an alliance" : roomModal === "sanctions" ? "Propose sanctions" : "Make a statement"}</h2></div><button type="button" className="cr-modal-close" onClick={() => setRoomModal("")} aria-label="Close"><X size={18} /></button></div>
-            {roomModal === "statement" ? <label className="cr-form-label">Your statement<textarea autoFocus rows={5} value={roomDraft} onChange={(event) => setRoomDraft(event.target.value)} placeholder={`The delegation of ${country.name} states…`} required /></label> : <><label className="cr-form-label">Target delegation<select value={roomTarget} onChange={(event) => setRoomTarget(event.target.value)} required>{roomTargetCountries.map((targetCountry) => <option key={targetCountry.name} value={targetCountry.name}>{targetCountry.flag} {targetCountry.name}</option>)}</select></label><p className="cr-modal-note">This is a fictional simulation proposal. It will be sent to your configured simulation backend.</p></>}
+            {roomModal === "statement" ? <label className="cr-form-label">Your statement{!phaseAllows("SPEECH") && <span className="cr-modal-note"> Speeches open during Opening Speeches / Moderated Caucus. The conference is currently in {phaseLabel(phase)}.</span>}<textarea autoFocus rows={5} value={roomDraft} onChange={(event) => setRoomDraft(event.target.value)} placeholder={`The delegation of ${country.name} states…`} required /></label> : <><label className="cr-form-label">Target delegation<select value={roomTarget} onChange={(event) => setRoomTarget(event.target.value)} required>{roomTargetCountries.map((targetCountry) => <option key={targetCountry.name} value={targetCountry.name}>{targetCountry.flag} {targetCountry.name}</option>)}</select></label><p className="cr-modal-note">In this single-delegate session, formal diplomacy is driven through the conference phases, the Crisis Center and the voting phase. This records your intent.</p></>}
             <div className="cr-modal-actions"><button type="button" className="cr-secondary-button" onClick={() => setRoomModal("")}>Cancel</button><button type="submit" className="cr-primary-button" disabled={actionLoading || (roomModal === "statement" && !roomDraft.trim())}>{actionLoading ? "Submitting…" : roomModal === "statement" ? <><Send size={14} /> Publish statement</> : roomModal === "alliance" ? <><Handshake size={15} /> Send proposal</> : <><Shield size={15} /> Submit proposal</>}</button></div>
           </form>
         </div>
@@ -788,7 +622,30 @@ const approveAIProposal = async () => {
         document.body
       )}
 
-      <OpponentCouncil country={country} />
+      <OpponentCouncil country={country} onActionComplete={conf.refresh} />
     </main>
   );
+}
+
+// Turn a backend event `type` (e.g. "speech_submitted") into a short human label for the live record.
+function humanizeEventType(type) {
+  if (!type) return "Conference update";
+  const labels = {
+    conference_start: "Conference started",
+    speech_submitted: "Speech delivered",
+    negotiation_proposed: "Negotiation proposed",
+    negotiation_accepted: "Negotiation accepted",
+    negotiation_rejected: "Negotiation rejected",
+    negotiation_countered: "Negotiation countered",
+    negotiation_expired: "Negotiation expired",
+    crisis_started: "Crisis started",
+    crisis_response: "Crisis response",
+    crisis_resolved: "Crisis resolved",
+    resolution_passed: "Resolution passed",
+    resolution_failed: "Resolution failed",
+    sanction: "Sanctions applied",
+    alliance: "Alliance formed",
+    aid: "Aid sent",
+  };
+  return labels[type] || type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
