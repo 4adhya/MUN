@@ -1524,3 +1524,11 @@
 .cr-action-button.is-disabled, .cr-action-button:disabled { opacity: .5; cursor: not-allowed; }
 .cr-spin { animation: crSpin 1s linear infinite; }
 @keyframes crSpin { to { transform: rotate(360deg); } }
+
+/* Latest published statement: shows the actual submitted speech text immediately, above the live record */
+.cr-latest-speech { margin: 0 0 12px; padding: 11px 12px; border: 1px solid #2c5b7d; border-left: 3px solid #3bd5a7; border-radius: 9px; background: rgba(13, 53, 46, 0.35); }
+.cr-latest-speech-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; font-size: 11px; color: #a8c2d8; }
+.cr-latest-speech-meta strong { color: #eaf6ff; }
+.cr-latest-speech-tag { color: #7cf2c6; font-weight: 700; letter-spacing: .4px; }
+.cr-latest-speech-meta time { margin-left: auto; color: #7890a6; }
+.cr-latest-speech-text { margin: 0; color: #dde9f6; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }

@@ -1,10 +1,9 @@
-import ScrollReveal from "./components/ScrollReveal";
 import { useEffect, useRef, useState } from "react";
 import Globe from "react-globe.gl";
 import {
   Globe2, ArrowRight, Shield, Users, Handshake, Activity,
   TrendingUp, Landmark, Map, BarChart3, Search, Check,
-  AlertTriangle, Bell, MessageSquare, Crosshair, HeartHandshake,
+  AlertTriangle, Bell, MessageSquare,
   Clock3, X, ChevronDown, Send, Target
 } from "lucide-react";
 import "./App.css";
@@ -61,95 +60,6 @@ const tabs = [
   ["impact", "Living World", TrendingUp],
   ["analytics", "World", BarChart3],
 ];
-
-function WorldGraphic({ selected, onSelect, large = false }) {
-  const [hovered, setHovered] = useState("");
-
-  const land = [
-    "M62 74 L91 51 140 42 167 58 199 62 220 88 199 110 181 126 171 158 149 179 131 161 114 143 94 128 72 116 55 94Z",
-    "M180 177 L205 186 223 211 216 241 201 268 197 304 180 343 165 326 158 291 147 263 154 229 164 204Z",
-    "M312 76 L342 59 378 62 398 78 431 72 457 59 488 64 516 48 555 59 586 73 619 76 645 96 675 108 690 133 669 151 639 146 614 158 588 145 569 164 542 151 522 173 494 159 471 170 454 147 430 139 407 156 389 137 368 139 348 122 322 116Z",
-    "M356 149 L381 151 407 175 410 203 394 233 377 264 361 292 343 270 331 240 329 211 338 185Z",
-    "M496 182 L524 167 558 174 579 193 604 199 628 223 620 251 590 261 573 248 555 268 536 251 514 238 504 214Z",
-    "M626 276 L653 266 682 276 699 296 687 317 659 325 636 309Z",
-    "M708 157 L726 148 741 162 733 180 716 181Z",
-    "M248 95 L267 83 286 92 279 110 259 117Z",
-  ];
-
-  return (
-    <div className={`world-graphic ${large ? "world-graphic-large" : ""}`}>
-      <svg viewBox="0 0 800 410" className="continent-art" role="img" aria-label="Illustrated interactive world map">
-        <defs>
-          <pattern id="mapGrid" width="32" height="32" patternUnits="userSpaceOnUse">
-            <path d="M32 0H0V32" fill="none" stroke="#1a4160" strokeWidth=".8" />
-          </pattern>
-          <linearGradient id="landGlow" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#247b99" />
-            <stop offset="100%" stopColor="#164566" />
-          </linearGradient>
-        </defs>
-        <rect width="800" height="410" fill="#071b30" />
-        <rect width="800" height="410" fill="url(#mapGrid)" />
-        <g fill="url(#landGlow)" stroke="#4387a7" strokeWidth="1.5">
-          {land.map((d, i) => <path key={i} d={d} />)}
-        </g>
-
-        {featuredCountries.map((c) => {
-          const active = selected === c.name;
-          const showLabel = large || active || hovered === c.name;
-          const x = c.x * 8;
-          const y = c.y * 4.1;
-          const labelWidth = Math.max(62, c.name.length * 6.3 + 13);
-          const labelX = x + labelWidth + 9 > 795 ? x - labelWidth - 9 : x + 9;
-
-          return (
-            <g
-              key={c.name}
-              className="map-country-point"
-              onMouseEnter={() => setHovered(c.name)}
-              onMouseLeave={() => setHovered("")}
-              onClick={() => onSelect?.(c.name)}
-              onKeyDown={(e) => {
-                if (onSelect && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault();
-                  onSelect(c.name);
-                }
-              }}
-              tabIndex={onSelect ? 0 : undefined}
-              role={onSelect ? "button" : undefined}
-              aria-label={`Select ${c.name}`}
-            >
-              {active && <circle cx={x} cy={y} r="17" fill={c.color} opacity=".17" />}
-              <circle cx={x} cy={y} r={active ? 6 : 4.5} fill={c.color} />
-              <circle cx={x} cy={y} r={active ? 12 : 9} fill="none" stroke={c.color} opacity=".65" />
-              {showLabel && (
-                <g className="country-map-label">
-                  <rect
-                    x={labelX}
-                    y={y - 24}
-                    width={labelWidth}
-                    height="22"
-                    rx="5"
-                    fill={active ? "#0c3960" : "#081b2e"}
-                    stroke={active ? "#48c8ff" : "#315774"}
-                  />
-                  <text x={labelX + 7} y={y - 10} fill="#f0f8ff" fontSize="10.5" fontWeight={active ? "700" : "500"}>
-                    {c.name}
-                  </text>
-                </g>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      <div className="map-legend">
-        <span><i className="legend-dot friendly" /> Diplomatic partner</span>
-        <span><i className="legend-dot neutral" /> Neutral</span>
-        <span><i className="legend-dot hostile" /> Tension</span>
-      </div>
-    </div>
-  );
-}
 
 function RotatingEarth() {
   const globeRef = useRef(null);

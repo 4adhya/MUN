@@ -289,6 +289,8 @@ setAiProposal(result);
   const [roomDraft, setRoomDraft] = useState("");
   const [roomToast, setRoomToast] = useState("");
   const [showReport, setShowReport] = useState(false);
+  // The last speech the backend accepted, so the actual published text is shown immediately (no refresh).
+  const [lastSpeech, setLastSpeech] = useState(null);
 
   const notifyRoom = (message) => {
     setRoomToast(message);
@@ -362,10 +364,13 @@ setAiProposal(result);
       }
       setActionLoading(true);
       try {
-        await conf.runAction(
+        // runAction returns the backend Speech (id, country_code, text, phase, created_at) so the
+        // actual published text can be shown at once — the summary event stays in the live record.
+        const speech = await conf.runAction(
           () => submitSpeech(conf.conferenceId, conf.delegate.id, conf.myCountryCode, statement),
           `${country.name} delivered a statement.`
         );
+        if (speech?.text) setLastSpeech(speech);
         setRoomDraft("");
         setRoomModal("");
         notifyRoom(`${country.name}'s statement was recorded in the conference.`);
@@ -507,6 +512,16 @@ setAiProposal(result);
 
         <aside className="cr-activity-card">
           <div className="cr-activity-heading"><div><span className="cr-eyebrow">LIVE RECORD</span><h2>Conference activity</h2></div><span className="cr-activity-live"><i /> LIVE</span></div>
+          {lastSpeech && (
+            <article className="cr-latest-speech" aria-label="Latest published statement">
+              <div className="cr-latest-speech-meta">
+                <strong>{country.flag || "🌐"} {conf.myCountry?.country_name || country.name}</strong>
+                <span className="cr-latest-speech-tag">STATEMENT · {phaseLabel(lastSpeech.phase)}</span>
+                <time>{formatSpeechTime(lastSpeech.created_at)}</time>
+              </div>
+              <p className="cr-latest-speech-text">{lastSpeech.text}</p>
+            </article>
+          )}
           <div className="cr-activity-list">
             {timeline.slice(0, 5).map((event) => (
               <article className="cr-activity-item" key={event.id}>
@@ -625,6 +640,15 @@ setAiProposal(result);
       <OpponentCouncil country={country} onActionComplete={conf.refresh} />
     </main>
   );
+}
+
+// Short local time for a published speech's ISO timestamp (falls back to a generic label).
+function formatSpeechTime(iso) {
+  if (!iso) return "Just now";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "Just now"
+    : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 // Turn a backend event `type` (e.g. "speech_submitted") into a short human label for the live record.

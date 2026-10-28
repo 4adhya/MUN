@@ -58,13 +58,6 @@ const sharedPageStyle = {
   boxSizing: "border-box",
 };
 
-// Which conference phase each view needs the backend to be in before its actions are allowed.
-const VIEW_TARGET_PHASE = {
-  crisis: "CRISIS",
-  resolutions: "VOTING",
-  impact: null, // read-only; works in any phase
-};
-
 export default function CrisisCenter({ view = "crisis", country: initialCountry, onResolutionPassed }) {
   const countryName =
     typeof initialCountry === "string" ? initialCountry : initialCountry?.name || "India";
