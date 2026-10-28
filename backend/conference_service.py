@@ -87,6 +87,7 @@ from .mun import (
     is_finalized,
 )
 from .negotiation_rules import apply_negotiation_outcome
+from .persistence.service import NullPersistenceService, compute_scores as persistence_compute_scores
 from .report_schemas import SimulationReport
 from .report_service import build_report
 from .rules import ActionError, ConflictError, NotFoundError, validate_world
@@ -184,6 +185,52 @@ class ConferenceService:
         self._lock = RLock()  # FastAPI runs sync routes in a thread pool
         # The clock negotiations use for creation, answers and expiry (tests replace it to move time).
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
+        # Phase 10 persistence collaborator. Defaults to a no-op so the in-memory behaviour is
+        # unchanged until persistence is explicitly attached (set_persistence). This service remains
+        # the single state machine; persistence only mirrors the records it already owns.
+        self._persistence = NullPersistenceService()
+
+    # --- persistence (Phase 10) ---------------------------------------------------------------
+    def set_persistence(self, persistence) -> None:
+        """Attach a persistence collaborator (PersistenceService) or detach with NullPersistenceService."""
+        self._persistence = persistence or NullPersistenceService()
+
+    @property
+    def persistence(self):
+        return self._persistence
+
+    def _persist(self, record: "ConferenceRecord") -> None:
+        """Mirror a record to durable storage. Never raises: a storage error must not break a live op."""
+        self._persistence.persist(record)
+
+    def persist_conference(self, conference_id: str) -> None:
+        """Persist a conference by id. Used by the resolution/crisis services after they commit changes
+        to a shared record, so persistence stays in one place and those services need no storage code."""
+        with self._lock:
+            record = self._records.get(conference_id)
+            if record is not None:
+                self._persist(record)
+
+    def load_persisted(self) -> int:
+        """Rehydrate every persisted conference into memory (used at startup / after a restart).
+
+        Records already in memory win (the live state machine is authoritative); only conferences
+        that are not currently loaded are restored. Returns how many were restored.
+        """
+        with self._lock:
+            restored = 0
+            for record in self._persistence.restore_records():
+                cid = record.conference.id
+                if cid not in self._records:
+                    self._records[cid] = record
+                    restored += 1
+            return restored
+
+    def get_scores(self, conference_id: str) -> list[dict]:
+        """Deterministic delegate scores for a conference, derived from its recorded event history."""
+        with self._lock:
+            record = self._get(conference_id)
+            return persistence_compute_scores(record)
 
     # --- helpers -------------------------------------------------------------------------------
     def _get(self, conference_id: str) -> ConferenceRecord:
@@ -346,6 +393,7 @@ class ConferenceService:
         record = ConferenceRecord(conference=conference, config=config)
         with self._lock:
             self._records[conference.id] = record
+            self._persist(record)
             return self._snapshot(record)
 
     def join(self, conference_id: str, name: str, role: str, country: Optional[str] = None) -> Participant:
@@ -385,6 +433,7 @@ class ConferenceService:
                 country_code=seat.country_code if seat else None,
             )
             record.participants.append(participant)
+            self._persist(record)
             return participant.model_copy(deep=True)
 
     def get(self, conference_id: str) -> ConferenceSnapshot:
@@ -445,6 +494,7 @@ class ConferenceService:
             record.world = world
             record.conference = conference
             record.speakers = speakers
+            self._persist(record)
             return self._snapshot(record)
 
     def advance(self, conference_id: str, to_phase: Optional[str] = None) -> ConferenceSnapshot:
@@ -493,6 +543,7 @@ class ConferenceService:
             record.conference = conference
             record.speakers = speakers
             self._expire_stale_negotiations(record, self._clock())  # offers the new phase no longer permits
+            self._persist(record)
             return self._snapshot(record)
 
     def check_action(self, conference_id: str, action: str) -> ActionCheckResponse:
@@ -596,6 +647,8 @@ class ConferenceService:
 
             record.speeches.append(speech)  # nothing below can fail: both commits happen together
             world.events.append(event)
+            self._persistence.append_event(conference_id, event)
+            self._persist(record)
             return speech.model_copy(deep=True)
 
     def get_speeches(
@@ -794,6 +847,8 @@ class ConferenceService:
 
             record.negotiations.append(negotiation)  # nothing below can fail: both commits happen together
             world.events.append(event)
+            self._persistence.append_event(conference_id, event)
+            self._persist(record)
             return negotiation.model_copy(deep=True)
 
     def respond_negotiation(
@@ -883,6 +938,7 @@ class ConferenceService:
 
             record.world = draft  # commit: world and negotiation together
             record.negotiations[index] = updated
+            self._persist(record)
             return updated.model_copy(deep=True)
 
     def get_negotiations(
@@ -923,9 +979,45 @@ class ConferenceService:
             )
 
     def clear(self) -> None:
-        """Forget every conference (used by tests)."""
+        """Forget every conference IN MEMORY (used by tests). Does not touch durable storage."""
         with self._lock:
             self._records.clear()
+
+
+def stored_to_record(stored) -> ConferenceRecord:
+    """Rebuild a live ConferenceRecord from a persisted StoredConference (Phase 10 rehydration).
+
+    Reconstructs the MUN pydantic objects from their stored JSON, re-derives the committee config
+    from the conference's committee, and rebuilds the speaker queue for the current phase so the
+    restored record behaves exactly like one created in memory. Pure data in, record out.
+    """
+    conference = Conference.model_validate(stored.conference)
+    config = get_committee_config(conference.committee.value)
+    participants = [Participant.model_validate(p) for p in stored.participants]
+    world = WorldState.model_validate(stored.world) if stored.world is not None else None
+    speeches = [Speech.model_validate(s) for s in stored.speeches]
+    negotiations = [Negotiation.model_validate(n) for n in stored.negotiations]
+    resolutions = [Resolution.model_validate(r) for r in stored.resolutions]
+    votes = [Vote.model_validate(v) for v in stored.votes]
+
+    # The speaker queue is derived state: rebuild it for the current phase from the seated delegates,
+    # exactly as start()/advance() do, so it can never disagree with the restored phase.
+    if conference.status is ConferenceStatus.ACTIVE:
+        speakers = ConferenceService._open_floor(participants, conference.current_phase)
+    else:
+        speakers = SpeakerState()
+
+    return ConferenceRecord(
+        conference=conference,
+        config=config,
+        participants=participants,
+        world=world,
+        speeches=speeches,
+        speakers=speakers,
+        negotiations=negotiations,
+        resolutions=resolutions,
+        votes=votes,
+    )
 
 
 # Single shared instance used by the API.

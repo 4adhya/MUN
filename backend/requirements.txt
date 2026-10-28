@@ -1,6 +1,7 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
 pydantic>=2.6
+sqlalchemy>=2.0   # Phase 10: SQLite persistence (engine-agnostic ORM; swappable to PostgreSQL)
 
 # tests only
 pytest>=8

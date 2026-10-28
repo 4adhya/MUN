@@ -48,3 +48,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Phase 10: local SQLite persistence database (never committed)
+mun.db
+*.sqlite
+*.sqlite3

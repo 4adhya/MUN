@@ -427,6 +427,7 @@ class CrisisService:
 
             record.world = draft  # commit: world and response together
             book.responses.append(response)
+            self._c.persist_conference(conference_id)  # Phase 10: durably record the metric changes + event
             return CrisisRespondResult(
                 response=response.model_copy(deep=True),
                 crisis=self._view(book, crisis),
@@ -489,6 +490,7 @@ class CrisisService:
 
             book.crises[index] = closed  # nothing above can fail: both commits happen together
             world.events.extend(pending)
+            self._c.persist_conference(conference_id)  # Phase 10: durably record the resolution event
             return self._view(book, closed)
 
     # --- reads ---------------------------------------------------------------------------------

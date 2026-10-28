@@ -105,6 +105,56 @@ app.add_middleware(
 )
 
 
+def _persistence_enabled() -> bool:
+    """Phase 10 persistence is OPT-IN: on only when MUN_PERSISTENCE is truthy or MUN_DATABASE_URL is set.
+
+    This keeps the default (and the test suite) on the unchanged in-memory behaviour; a deployment
+    turns durability on with one environment variable and gets reload-after-restart for free.
+    """
+    if os.getenv("MUN_DATABASE_URL", "").strip():
+        return True
+    return os.getenv("MUN_PERSISTENCE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def configure_persistence() -> bool:
+    """Wire the conference service to a SQLite-backed repository and rehydrate stored conferences.
+
+    Returns True when persistence was enabled. Safe to call more than once. SQLite only (Phase 10);
+    the engine/URL comes from MUN_DATABASE_URL (the same seam a future PostgreSQL deployment uses).
+    """
+    if not _persistence_enabled():
+        return False
+    from .persistence.db import create_db_engine, create_session_factory, init_db
+    from .persistence.repository import SqlAlchemyConferenceRepository
+    from .persistence.service import PersistenceService
+
+    engine = create_db_engine()
+    init_db(engine)
+    repository = SqlAlchemyConferenceRepository(create_session_factory(engine))
+    conference_service.set_persistence(PersistenceService(repository))
+    conference_service.load_persisted()  # restore any conferences from a previous run
+    return True
+
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Startup: wire persistence if it is enabled (no-op otherwise). Never let storage wiring stop boot.
+    try:
+        if configure_persistence():
+            logger.info("Phase 10 persistence enabled (%s)", os.getenv("MUN_DATABASE_URL") or "sqlite file")
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Failed to configure persistence; continuing in-memory only")
+    yield
+    # Shutdown: nothing to tear down (SQLite connections are pooled per engine).
+
+
+# Register the lifespan on the already-created app (the modern replacement for @app.on_event).
+app.router.lifespan_context = _lifespan
+
+
 @app.exception_handler(ActionError)
 def action_error_handler(_request: Request, exc: ActionError) -> JSONResponse:
     return JSONResponse(

@@ -300,6 +300,7 @@ class ResolutionService:
             )
             record.resolutions.append(resolution)
             record.world.events.extend(pending)
+            self._c.persist_conference(record.conference.id)  # Phase 10
             return self._view(record, resolution)
 
     def add_clause(self, resolution_id: str, participant_id: str, clause_type: ClauseType, text: str) -> ResolutionView:
@@ -559,6 +560,7 @@ class ResolutionService:
             )
             record.resolutions[index] = updated
             record.world.events.extend(pending)
+            self._c.persist_conference(record.conference.id)  # Phase 10
             return self._view(record, updated)
 
     def review(self, resolution_id: str) -> ResolutionView:
@@ -585,6 +587,7 @@ class ResolutionService:
             )
             record.resolutions[index] = updated
             record.world.events.extend(pending)
+            self._c.persist_conference(record.conference.id)  # Phase 10
             return self._view(record, updated)
 
     # --- voting --------------------------------------------------------------------------------
@@ -655,6 +658,7 @@ class ResolutionService:
             record.votes.append(vote)  # nothing above can fail: all commits happen together
             record.resolutions[index] = updated
             record.world.events.extend(pending)
+            self._c.persist_conference(record.conference.id)  # Phase 10: durably record the vote/result
             return VoteResponse(
                 vote=vote.model_copy(deep=True), resolution_status=updated.status, result=updated.result
             )
