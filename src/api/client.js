@@ -1,12 +1,30 @@
 import { API_BASE_URL } from "./config.js";
 
 export class ApiError extends Error {
-  constructor(message, status = null) {
+  constructor(message, status = null, { failureType = null, reason = null } = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    // Set only for AI failures (see AI_FAILURE_LABELS): which kind of failure it was.
+    this.failureType = failureType;
+    this.reason = reason;
   }
 }
+
+// Stable failure types sent by the backend when an AI request does not produce a usable answer.
+// An AI failure is never a decision: it must be shown as a failure, never as "No action needed".
+export const AI_FAILURE_LABELS = {
+  AI_REQUEST_FAILED: "AI request failed",
+  TIMEOUT: "AI request timed out",
+  QUOTA_ERROR: "AI quota or rate limit reached",
+  SERVER_ERROR: "AI service error",
+  MODEL_UNAVAILABLE: "AI model unavailable",
+  MALFORMED_RESPONSE: "AI returned a malformed response",
+  INVALID_OUTPUT: "AI output was rejected as invalid",
+};
+
+export const aiFailureLabel = (failureType) =>
+  AI_FAILURE_LABELS[failureType] || AI_FAILURE_LABELS.AI_REQUEST_FAILED;
 
 const UNREACHABLE =
   "Can't reach the simulation server. Make sure the backend is running and try again.";
@@ -27,7 +45,10 @@ async function request(path, { method = "GET", body, timeoutMs = 90000 } = {}) {
     });
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new ApiError("The AI took too long to respond. Please retry.");
+      throw new ApiError("The AI took too long to respond. Please retry.", null, {
+        failureType: "TIMEOUT",
+        reason: "CLIENT_TIMEOUT",
+      });
     }
     throw new ApiError(UNREACHABLE);
   } finally {
@@ -44,18 +65,35 @@ async function request(path, { method = "GET", body, timeoutMs = 90000 } = {}) {
 
   if (!response.ok) {
     const detail = data?.detail;
-    const message =
+    // AI failures carry failure_type at the top level (/ai/propose, /ai/advisor, /ai/mun/*) or inside a dict `detail`.
+    const failureType = data?.failure_type || (detail && typeof detail === "object" ? detail.failure_type : null) || null;
+    const reason = data?.reason || (detail && typeof detail === "object" ? detail.reason : null) || null;
+    const detailText =
       typeof detail === "string"
         ? detail
-        : response.status >= 500
-          ? "The AI service encountered an error. Please retry."
-          : "The request could not be completed.";
+        : detail && typeof detail === "object" && typeof detail.error === "string"
+          ? detail.error
+          : null;
+    const message =
+      detailText ||
+      (response.status >= 500
+        ? "The AI service encountered an error. Please retry."
+        : "The request could not be completed.");
 
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, { failureType, reason });
   }
 
   if (data === null) {
     throw new ApiError("The server sent an unexpected response.", response.status);
+  }
+
+  // Defence in depth: a failure body must never be treated as a successful answer, whatever its HTTP status.
+  if (data && data.status === "AI_REQUEST_FAILED") {
+    throw new ApiError(
+      typeof data.detail === "string" ? data.detail : "The AI request failed. No decision was made.",
+      response.status,
+      { failureType: data.failure_type || "AI_REQUEST_FAILED", reason: data.reason || null }
+    );
   }
 
   return data;

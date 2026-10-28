@@ -12,9 +12,9 @@ from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel
 
-from ai.check_gemini import EXIT_CONFIG, CheckError
+from ai.check_gemini import CheckError
 from ai.country_agent import AgentProfile, build_briefing
-from ai.gemini_client import REASON_CONFIG, REASON_GENERIC, REASON_UNEXPECTED
+from ai.gemini_client import AI_REQUEST_FAILED, MALFORMED_RESPONSE, REASON_UNEXPECTED, failure_fields
 
 MAX_MESSAGE_CHARS = 1000
 MAX_HISTORY_TURNS = 8  # only the most recent turns go into the prompt
@@ -52,6 +52,7 @@ class AdvisorResult(BaseModel):
     error_code: Optional[Literal["gemini_error", "invalid_response"]] = None
     error: Optional[str] = None
     failure_reason: Optional[str] = None
+    failure_type: Optional[str] = None  # AI_REQUEST_FAILED | TIMEOUT | QUOTA_ERROR | SERVER_ERROR | ... (None when ok)
     http_status: Optional[int] = None
     attempts: Optional[int] = None
 
@@ -96,21 +97,14 @@ class DiplomaticAdvisor:
         try:
             raw = self._llm(system_prompt, user_prompt)
         except CheckError as err:
-            reason = getattr(err, "reason", None) or (REASON_CONFIG if err.exit_code == EXIT_CONFIG else REASON_GENERIC)
-            return AdvisorResult(
-                ok=False,
-                error_code="gemini_error",
-                error=err.message,
-                failure_reason=reason,
-                http_status=getattr(err, "http_status", None),
-                attempts=getattr(err, "attempts", None),
-            )
+            return AdvisorResult(ok=False, error_code="gemini_error", error=err.message, **failure_fields(err))
         except Exception as exc:  # type only: never echo a message that might hold sensitive text
             return AdvisorResult(
                 ok=False,
                 error_code="gemini_error",
                 error=f"Unexpected error calling Gemini ({type(exc).__name__})",
                 failure_reason=REASON_UNEXPECTED,
+                failure_type=AI_REQUEST_FAILED,
             )
 
         text = raw.strip() if isinstance(raw, str) else ""
@@ -120,6 +114,7 @@ class DiplomaticAdvisor:
                 error_code="invalid_response",
                 error="The advisor returned an empty reply",
                 failure_reason="INVALID_AI_RESPONSE",
+                failure_type=MALFORMED_RESPONSE,
             )
         if len(text) > MAX_REPLY_CHARS:
             text = text[:MAX_REPLY_CHARS].rstrip() + "…"

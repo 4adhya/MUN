@@ -27,7 +27,7 @@ if str(AI_DIR) not in sys.path:
 
 from ai.advisor import MAX_HISTORY_TURNS, MAX_MESSAGE_CHARS, DiplomaticAdvisor
 from ai.country_agent import COUNTRY_PROFILES, AgentProfile, AgentResult, CountryAgent
-from ai.gemini_client import REASON_CONFIG, resolve_model
+from ai.gemini_client import AI_REQUEST_FAILED, REASON_CONFIG, resolve_model
 
 from .ai_routes import router as conference_ai_router
 from .conference_schemas import (
@@ -659,18 +659,20 @@ def ai_failure_response(country_name: str, result: Any) -> JSONResponse:  # Agen
     existing frontend client already shows.
     """
     reason = result.failure_reason or AI_STATUS_FAILED
+    failure_type = result.failure_type or AI_REQUEST_FAILED
     logger.warning(
-        "ai proposal failed country=%s reason=%s upstream_http_status=%s attempts=%s",
-        country_name, reason, result.http_status, result.attempts,
+        "ai proposal failed country=%s reason=%s failure_type=%s upstream_http_status=%s attempts=%s",
+        country_name, reason, failure_type, result.http_status, result.attempts,
     )
     return JSONResponse(
         status_code=503 if reason == REASON_CONFIG else 502,
         content={
             "status": AI_STATUS_FAILED,
+            "failure_type": failure_type,
             "reason": reason,
             "error_code": result.error_code,
             "detail": (
-                f"AI request failed ({reason}): {result.error} "
+                f"AI request failed ({failure_type}/{reason}): {result.error} "
                 "No decision was made and the simulation was not changed."
             ),
             "country": country_name,

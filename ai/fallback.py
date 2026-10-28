@@ -36,6 +36,7 @@ class AgentOutcome(BaseModel):
     error_code: Optional[Literal["gemini_error", "invalid_response"]] = None
     error: Optional[str] = None
     failure_reason: Optional[str] = None  # e.g. GEMINI_HTTP_503, GEMINI_TIMEOUT, INVALID_AI_RESPONSE
+    failure_type: Optional[str] = None  # AI_REQUEST_FAILED | TIMEOUT | QUOTA_ERROR | SERVER_ERROR | MODEL_UNAVAILABLE | MALFORMED_RESPONSE | INVALID_OUTPUT
     http_status: Optional[int] = None
     attempts: Optional[int] = None
     raw_response: Optional[str] = None  # truncated Gemini reply, only for invalid_response
@@ -71,6 +72,7 @@ def request_decision(agent: CountryAgent, situation: str, world: Any) -> AgentOu
         error_code=result.error_code,
         error=result.error,
         failure_reason=result.failure_reason,
+        failure_type=result.failure_type,
         http_status=result.http_status,
         attempts=result.attempts,
         raw_response=result.raw_response,

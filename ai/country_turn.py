@@ -49,6 +49,7 @@ class TurnResult(BaseModel):
     error_code: Optional[str] = None  # "gemini_error" | "invalid_response" when source == "failed"
     error: Optional[str] = None  # why there is no decision (never contains the API key)
     failure_reason: Optional[str] = None  # e.g. GEMINI_HTTP_503, GEMINI_TIMEOUT, INVALID_AI_RESPONSE
+    failure_type: Optional[str] = None  # AI_REQUEST_FAILED | TIMEOUT | QUOTA_ERROR | SERVER_ERROR | ... | INVALID_OUTPUT
     http_status: Optional[int] = None
     attempts: Optional[int] = None
     raw_response: Optional[str] = None  # truncated Gemini reply, only for invalid_response
@@ -124,6 +125,7 @@ def run_country_turn(
             error_code=outcome.error_code,
             error=outcome.error,
             failure_reason=outcome.failure_reason,
+            failure_type=outcome.failure_type,
             http_status=outcome.http_status,
             attempts=outcome.attempts,
             raw_response=outcome.raw_response,

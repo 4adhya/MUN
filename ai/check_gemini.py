@@ -15,6 +15,7 @@ Exit codes: 0 reached Gemini and got a reply | 1 key missing or still the placeh
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -78,6 +79,10 @@ def redact(text: str, key: str) -> str:
     """Remove the API key from any text before it can be shown, and keep it short."""
     if key:
         text = text.replace(key, "***")
+    # Defence in depth: also mask anything that merely LOOKS like a Google API key or a key= / api_key= parameter
+    # (provider error text sometimes echoes the request URL), so a key can never leak through a message or a log.
+    text = re.sub(r"AIza[0-9A-Za-z_\-]{8,}", "***", text)
+    text = re.sub(r"(?i)\b(api[_-]?key|key)=[^\s&\"']+", r"\1=***", text)
     return text if len(text) <= 300 else text[:300] + "..."
 
 

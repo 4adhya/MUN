@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ai.country_agent import LLM
-from ai.gemini_client import REASON_CONFIG, resolve_model
+from ai.gemini_client import AI_REQUEST_FAILED, REASON_CONFIG, resolve_model
 from ai.mun_chair import MAX_QUESTION_CHARS, ChairAgent
 from ai.mun_context import build_context
 from ai.mun_core import AIPreconditionError, AIResult
@@ -120,15 +120,20 @@ def _model_or_none() -> Optional[str]:
 
 def _failure(result: AIResult) -> JSONResponse:
     reason = result.failure_reason or AI_STATUS_FAILED
-    logger.warning("conference ai failed role=%s reason=%s upstream_http_status=%s", result.role, reason, result.http_status)
+    failure_type = result.failure_type or AI_REQUEST_FAILED
+    logger.warning(
+        "conference ai failed role=%s failure_type=%s reason=%s upstream_http_status=%s attempts=%s",
+        result.role, failure_type, reason, result.http_status, result.attempts,
+    )
     return JSONResponse(
         status_code=503 if reason == REASON_CONFIG else 502,
         content={
             "status": AI_STATUS_FAILED,
             "role": result.role,
+            "failure_type": failure_type,
             "reason": reason,
             "error_code": result.error_code,
-            "detail": f"AI request failed ({reason}): {result.error} Nothing was changed and no recommendation was made.",
+            "detail": f"AI request failed ({failure_type}/{reason}): {result.error} Nothing was changed and no recommendation was made.",
             "upstream_http_status": result.http_status,
             "attempts": result.attempts,
             "model_attempted": _model_or_none(),

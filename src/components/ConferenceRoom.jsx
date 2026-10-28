@@ -29,6 +29,7 @@ import WorldMap from "./WorldMap";
 import "./ConferenceRoom.css";
 import {
   proposeAI,
+  aiFailureLabel,
   sanction,
   alliance,
   aid,
@@ -371,6 +372,14 @@ const requestAIProposal = async () => {
       situation
     );
 
+    if (!result?.decision || !result.decision.decision) {
+  setAiProposal(null);
+  setAiError(
+    `${aiFailureLabel(result?.failure_type)}: no decision was made. This is not a choice to take no action. Please try again.`
+  );
+  return;
+}
+
     if (result.used_fallback) {
   setAiProposal(null);
   setAiError(
@@ -382,7 +391,9 @@ const requestAIProposal = async () => {
 setAiProposal(result);
   } catch (error) {
     setAiError(
-      error.message || "Unable to obtain an AI proposal."
+      error.failureType
+        ? `${aiFailureLabel(error.failureType)}: ${error.message}`
+        : error.message || "Unable to obtain an AI proposal."
     );
   } finally {
     clearInterval(elapsedTimer);

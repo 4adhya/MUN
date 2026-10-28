@@ -17,13 +17,17 @@ Rules every role follows (they mirror the existing country agent):
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Any, Callable, Generic, Literal, Optional, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from ai.check_gemini import EXIT_CONFIG, CheckError
-from ai.country_agent import LLM, MAX_RAW_ECHO_CHARS, REASON_INVALID_RESPONSE, ResponseError
-from ai.gemini_client import REASON_CONFIG, REASON_GENERIC, REASON_UNEXPECTED
+from ai.check_gemini import CheckError
+from ai.country_agent import LLM, MAX_RAW_ECHO_CHARS, REASON_INVALID_RESPONSE, MalformedResponseError, ResponseError
+from ai.gemini_client import AI_REQUEST_FAILED, REASON_UNEXPECTED, failure_fields, safe_model_name
+
+logger = logging.getLogger("mun.ai.agent")
 
 T = TypeVar("T")
 
@@ -44,6 +48,10 @@ class AIResult(BaseModel, Generic[T]):
     error_code: Optional[Literal["gemini_error", "invalid_response"]] = None
     error: Optional[str] = None
     failure_reason: Optional[str] = None
+    failure_type: Optional[str] = Field(
+        default=None,
+        description="AI_REQUEST_FAILED | TIMEOUT | QUOTA_ERROR | SERVER_ERROR | MODEL_UNAVAILABLE | MALFORMED_RESPONSE | INVALID_OUTPUT",
+    )
     http_status: Optional[int] = None
     attempts: Optional[int] = None
     raw_response: Optional[str] = Field(default=None, description="Truncated Gemini reply, only for invalid_response")
@@ -62,13 +70,13 @@ def parse_json_object(raw: Any) -> dict:
     """The reply must be exactly one JSON object: no prose, no code fences, no list."""
     text = raw.strip() if isinstance(raw, str) else ""
     if not text:
-        raise ResponseError("Gemini returned an empty response")
+        raise MalformedResponseError("Gemini returned an empty response")
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ResponseError(f"Response is not valid JSON ({exc.msg} at position {exc.pos})") from None
+        raise MalformedResponseError(f"Response is not valid JSON ({exc.msg} at position {exc.pos})") from None
     if not isinstance(data, dict):
-        raise ResponseError("Response JSON must be an object")
+        raise MalformedResponseError("Response JSON must be an object")
     return data
 
 
@@ -133,26 +141,36 @@ class MunAgent:
         """Ask Gemini once. Never raises for AI problems; `parse` raises ResponseError for an unusable reply."""
         self._label = label or self.role
         meta = meta or {}
+        started = time.monotonic()
+        elapsed_ms = lambda: int((time.monotonic() - started) * 1000)  # noqa: E731
         try:
             raw = self._llm(system_prompt, user_prompt)
-        except CheckError as err:  # Phase 1 error: clear message, no key
-            reason = getattr(err, "reason", None) or (REASON_CONFIG if err.exit_code == EXIT_CONFIG else REASON_GENERIC)
+        except CheckError as err:  # Phase 1 error: clear message, no key (already logged by the Gemini client)
             return AIResult(
                 ok=False, role=self.role, meta=meta, error_code="gemini_error", error=err.message,
-                failure_reason=reason, http_status=getattr(err, "http_status", None),
-                attempts=getattr(err, "attempts", None),
+                **failure_fields(err),
             )
         except Exception as exc:  # type only: never echo a message that might hold sensitive text
+            logger.error(
+                "ai call failed agent=%s model=%s error_type=%s failure_type=%s elapsed_ms=%d",
+                self._label, safe_model_name() or "-", type(exc).__name__, AI_REQUEST_FAILED, elapsed_ms(),
+            )
             return AIResult(
                 ok=False, role=self.role, meta=meta, error_code="gemini_error",
                 error=f"Unexpected error calling Gemini ({type(exc).__name__})", failure_reason=REASON_UNEXPECTED,
+                failure_type=AI_REQUEST_FAILED,
             )
         try:
             output = parse(raw)
         except ResponseError as err:
             echo = raw[:MAX_RAW_ECHO_CHARS] if isinstance(raw, str) else repr(raw)[:MAX_RAW_ECHO_CHARS]
+            logger.warning(
+                "ai output rejected agent=%s model=%s failure_type=%s reason=%s elapsed_ms=%d",
+                self._label, safe_model_name() or "-", err.failure_type, REASON_INVALID_RESPONSE, elapsed_ms(),
+            )
             return AIResult(
                 ok=False, role=self.role, meta=meta, error_code="invalid_response", error=str(err),
-                raw_response=echo, failure_reason=REASON_INVALID_RESPONSE,
+                raw_response=echo, failure_reason=REASON_INVALID_RESPONSE, failure_type=err.failure_type,
             )
+        logger.info("ai output ok agent=%s model=%s elapsed_ms=%d", self._label, safe_model_name() or "-", elapsed_ms())
         return AIResult(ok=True, role=self.role, output=output, meta=meta)

@@ -22,8 +22,23 @@ Reliability policy (all values are constants below, nothing is retried forever):
     * A fallback model is used ONLY if GEMINI_FALLBACK_MODEL is set to a gemma-* model different from the
       primary one. It gets one attempt, after the primary model failed with a transient error. No fallback
       model is configured by default and none is invented.
-    * At most GEMINI_MAX_CONCURRENCY (default 6) Gemini requests are in flight at the same time in this
-      process, so several country agents asked at once queue up instead of hammering the API.
+    * At most GEMINI_MAX_CONCURRENCY (default 3) Gemini requests are in flight at the same time in this
+      process, so several country agents asked at once queue up instead of hammering the API. The queue itself is
+      bounded too (GEMINI_MAX_QUEUE, default 12 waiting attempts): beyond that a request fails at once with
+      GEMINI_BUSY instead of piling up threads that would all wait for the same slots.
+
+Failure taxonomy (Phase 9). Every failure carries a stable `failure_type` next to its detailed `reason`:
+
+    AI_REQUEST_FAILED   the request could not be completed and no more specific type applies (bad key, bad
+                        request, connection error, no free slot, unexpected error)
+    TIMEOUT             the request (or every retry of it) timed out
+    QUOTA_ERROR         HTTP 429: rate limit or quota (permanent for this call: not retried)
+    SERVER_ERROR        HTTP 5xx from Gemini (500/502/503/504 are retried; the rest are not)
+    MODEL_UNAVAILABLE   HTTP 404: the configured model does not exist for this key (not retried)
+    MALFORMED_RESPONSE  Gemini answered, but not with usable JSON (empty, blocked, not JSON, not an object)
+    INVALID_OUTPUT      valid JSON that does not satisfy the schema or the conference/world checks
+
+The last two are raised by the agents when they parse a reply; the first five are produced here.
 
 Speed policy (why the AI advisor used to be slow and end in "HTTP 504 Deadline expired"):
 
@@ -81,6 +96,20 @@ DEFAULT_MAX_CONCURRENT_CALLS = 3  # council uses two slots, leaving one for the 
 RETRYABLE_HTTP_STATUSES = frozenset({500, 502, 503, 504})
 FALLBACK_MODEL_ENV = "GEMINI_FALLBACK_MODEL"
 MAX_CONCURRENCY_ENV = "GEMINI_MAX_CONCURRENCY"
+DEFAULT_MAX_QUEUED_CALLS = 12  # attempts allowed to WAIT for a slot; more than this fail fast instead of piling up
+MAX_QUEUE_ENV = "GEMINI_MAX_QUEUE"
+
+# --- failure types (stable, machine-readable; see the taxonomy in the module docstring) ----------------------------
+AI_REQUEST_FAILED = "AI_REQUEST_FAILED"
+TIMEOUT = "TIMEOUT"
+QUOTA_ERROR = "QUOTA_ERROR"
+SERVER_ERROR = "SERVER_ERROR"
+MALFORMED_RESPONSE = "MALFORMED_RESPONSE"
+MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
+INVALID_OUTPUT = "INVALID_OUTPUT"
+FAILURE_TYPES = (
+    AI_REQUEST_FAILED, TIMEOUT, QUOTA_ERROR, SERVER_ERROR, MALFORMED_RESPONSE, MODEL_UNAVAILABLE, INVALID_OUTPUT,
+)
 
 # --- failure reasons (stable, machine-readable) ------------------------------------------------
 REASON_CONFIG = "AI_CONFIGURATION_ERROR"
@@ -99,6 +128,21 @@ _now = time.monotonic
 _uniform = random.uniform
 
 
+def failure_type_for(reason: Optional[str], http_status: Optional[int]) -> str:
+    """The failure type for a failed Gemini call, from its detailed reason and upstream HTTP status."""
+    if reason == REASON_TIMEOUT:
+        return TIMEOUT
+    if http_status == 429:
+        return QUOTA_ERROR
+    if http_status == 404:
+        return MODEL_UNAVAILABLE
+    if http_status is not None and http_status >= 500:
+        return SERVER_ERROR
+    if reason == REASON_EMPTY:
+        return MALFORMED_RESPONSE
+    return AI_REQUEST_FAILED
+
+
 class GeminiRequestError(CheckError):
     """The call to Gemini failed. Still a CheckError (key-free message, exit code), plus structured details."""
 
@@ -113,8 +157,10 @@ class GeminiRequestError(CheckError):
         attempts: int = 1,
         model: Optional[str] = None,
         error_type: Optional[str] = None,
+        failure_type: Optional[str] = None,
     ) -> None:
         super().__init__(message, exit_code)
+        self.failure_type = failure_type or failure_type_for(reason, http_status)
         self.reason = reason
         self.http_status = http_status
         self.retryable = retryable
@@ -242,6 +288,35 @@ def _max_concurrency() -> int:
     return max(1, value)
 
 
+_waiting = 0  # attempts currently waiting for a slot
+_waiting_lock = threading.Lock()
+
+
+def _max_queue() -> int:
+    raw = os.environ.get(MAX_QUEUE_ENV, "").strip()
+    try:
+        value = int(raw) if raw else DEFAULT_MAX_QUEUED_CALLS
+    except ValueError:
+        value = DEFAULT_MAX_QUEUED_CALLS
+    return max(0, value)
+
+
+def _acquire_slot(semaphore: threading.BoundedSemaphore, timeout: float) -> str:
+    """Take a Gemini slot. Returns "ok", "timeout" (no slot in time) or "full" (too many are already waiting)."""
+    global _waiting
+    if semaphore.acquire(blocking=False):
+        return "ok"
+    with _waiting_lock:
+        if _waiting >= _max_queue():
+            return "full"
+        _waiting += 1
+    try:
+        return "ok" if semaphore.acquire(timeout=timeout) else "timeout"
+    finally:
+        with _waiting_lock:
+            _waiting -= 1
+
+
 def _get_semaphore() -> threading.BoundedSemaphore:
     """One process-wide limit shared by every country agent (created on first use)."""
     global _semaphore
@@ -305,7 +380,31 @@ def _finalize(err: GeminiRequestError, attempts: int) -> GeminiRequestError:
         attempts=attempts,
         model=err.model,
         error_type=err.error_type,
+        failure_type=err.failure_type,
     )
+
+
+def failure_fields(err: CheckError) -> dict:
+    """The machine-readable failure details of any Gemini-call error, for AgentResult / AIResult / AdvisorResult.
+
+    Works for a GeminiRequestError and for a plain CheckError (missing key, non-Gemma model): the latter has no
+    reason/type of its own, so it is reported as a configuration problem.
+    """
+    reason = getattr(err, "reason", None) or (REASON_CONFIG if err.exit_code == EXIT_CONFIG else REASON_GENERIC)
+    return {
+        "failure_reason": reason,
+        "failure_type": getattr(err, "failure_type", None) or AI_REQUEST_FAILED,
+        "http_status": getattr(err, "http_status", None),
+        "attempts": getattr(err, "attempts", None),
+    }
+
+
+def safe_model_name() -> Optional[str]:
+    """The configured model for log lines and error bodies, or None if the configuration is invalid."""
+    try:
+        return resolve_model()
+    except Exception:
+        return None
 
 
 # --- the call ----------------------------------------------------------------------------------------------
@@ -355,19 +454,24 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
                 break
 
             attempt += 1
-            if not semaphore.acquire(timeout=remaining):
+            slot = _acquire_slot(semaphore, remaining)
+            if slot != "ok":
+                queue_error = "QueueFull" if slot == "full" else "QueueTimeout"
                 last_error = GeminiRequestError(
-                    "Too many AI requests are in progress; no Gemini slot became free in time.",
+                    "The AI is handling too many requests right now; try again shortly."
+                    if slot == "full"
+                    else "Too many AI requests are in progress; no Gemini slot became free in time.",
                     EXIT_API,
                     reason=REASON_BUSY,
                     retryable=False,
                     model=model,
-                    error_type="QueueTimeout",
+                    error_type=queue_error,
                 )
                 logger.warning(
-                    "gemini call failed country=%s model=%s attempt=%d http_status=- error_type=QueueTimeout "
-                    "reason=%s elapsed_ms=%d",
-                    label, model, attempt, REASON_BUSY, int((_now() - started) * 1000),
+                    "gemini call failed country=%s model=%s attempt=%d http_status=- error_type=%s "
+                    "reason=%s failure_type=%s elapsed_ms=%d",
+                    label, model, attempt, queue_error, REASON_BUSY, last_error.failure_type,
+                    int((_now() - started) * 1000),
                 )
                 break
 
@@ -416,9 +520,9 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
                 elapsed_ms = int((_now() - attempt_started) * 1000)
                 logger.warning(
                     "gemini call failed country=%s model=%s attempt=%d http_status=%s error_type=%s reason=%s "
-                    "retryable=%s elapsed_ms=%d",
+                    "failure_type=%s retryable=%s elapsed_ms=%d",
                     label, model, attempt, err.http_status if err.http_status is not None else "-",
-                    err.error_type or "-", err.reason, err.retryable, elapsed_ms,
+                    err.error_type or "-", err.reason, err.failure_type, err.retryable, elapsed_ms,
                 )
             else:
                 logger.info(
@@ -444,8 +548,8 @@ def _generate(system_instruction: str, prompt: str, country: Optional[str], json
         )
     final = _finalize(last_error, attempt)
     logger.error(
-        "gemini request failed country=%s model=%s attempts=%d reason=%s http_status=%s total_ms=%d",
-        label, final.model, attempt, final.reason, final.http_status if final.http_status is not None else "-",
-        int((_now() - started) * 1000),
+        "gemini request failed country=%s model=%s attempts=%d reason=%s failure_type=%s http_status=%s total_ms=%d",
+        label, final.model, attempt, final.reason, final.failure_type,
+        final.http_status if final.http_status is not None else "-", int((_now() - started) * 1000),
     )
     raise final

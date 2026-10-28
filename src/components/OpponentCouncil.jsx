@@ -1,4 +1,3 @@
-
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -24,6 +23,7 @@ import {
   aid,
   getWorld,
   getEvents,
+  aiFailureLabel,
 } from "../api/client.js";
 import "./OpponentCouncil.css";
 
@@ -95,14 +95,16 @@ function getSelectedCountryId(country) {
   return normalizeCountryId(country.id || country.name || country.country_id);
 }
 
+const VALID_ACTIONS = ["SANCTION", "ALLIANCE", "AID", "NO_ACTION"];
+
+// A decision exists only if the server sent one. A missing decision is a FAILURE, never a NO_ACTION.
 function getDecision(response) {
-  return response?.decision || response?.proposal || response;
+  return response?.decision || response?.proposal || null;
 }
 
 function getDecisionType(decision) {
-  return String(
-    decision?.decision || decision?.action || "NO_ACTION"
-  ).toUpperCase();
+  const value = decision?.decision || decision?.action;
+  return value ? String(value).toUpperCase() : "";
 }
 
 function getTargetId(decision) {
@@ -160,6 +162,15 @@ export default function OpponentCouncil({ country, onActionComplete }) {
           const response = await proposeAI(opponent.id, situation.trim());
           const decision = getDecision(response);
 
+          // Never show "No action needed" for an answer that is not a real decision.
+          if (!decision || !VALID_ACTIONS.includes(getDecisionType(decision))) {
+            const failure = new Error(
+              "The server returned no usable decision. Nothing was decided for this country."
+            );
+            failure.failureType = response?.failure_type || "INVALID_OUTPUT";
+            throw failure;
+          }
+
           setProposals((previous) => ({
             ...previous,
             [opponent.id]: {
@@ -178,6 +189,7 @@ export default function OpponentCouncil({ country, onActionComplete }) {
               status: "error",
               country: opponent,
               error: err?.message || "The country agent could not respond.",
+              failureType: err?.failureType || "AI_REQUEST_FAILED",
             },
           }));
         }
@@ -369,7 +381,7 @@ export default function OpponentCouncil({ country, onActionComplete }) {
           const proposal = proposals[opponent.id];
           const decision = proposal?.decision;
           const action = decision ? getDecisionType(decision) : "";
-          const meta = ACTION_META[action] || ACTION_META.NO_ACTION;
+          const meta = ACTION_META[action] || ACTION_META.NO_ACTION; // only rendered when `decision` exists (validated above)
           const ActionIcon = meta.icon;
           const targetId = decision ? getTargetId(decision) : "";
           const isLoading = proposal?.status === "loading";
@@ -440,8 +452,9 @@ export default function OpponentCouncil({ country, onActionComplete }) {
               {isError && (
                 <div className="opponent-empty opponent-failure">
                   <AlertTriangle size={25} />
-                  <strong>Response unavailable</strong>
+                  <strong>{aiFailureLabel(proposal.failureType)}</strong>
                   <p>{proposal.error}</p>
+                  <p>No decision was made for this country. This is not a choice to take no action.</p>
                 </div>
               )}
 

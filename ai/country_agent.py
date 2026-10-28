@@ -14,14 +14,25 @@ failed AgentResult with error_code "invalid_response" (a failed call to Gemini i
 from __future__ import annotations
 
 import json
+import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator, model_validator
 
-from ai.check_gemini import EXIT_CONFIG, CheckError  # Phase 1 error type (its message never contains the key)
-from ai.gemini_client import REASON_CONFIG, REASON_GENERIC, REASON_UNEXPECTED
+from ai.check_gemini import CheckError  # Phase 1 error type (its message never contains the key)
+from ai.gemini_client import (
+    AI_REQUEST_FAILED,
+    INVALID_OUTPUT,
+    MALFORMED_RESPONSE,
+    REASON_UNEXPECTED,
+    failure_fields,
+    safe_model_name,
+)
+
+logger = logging.getLogger("mun.ai.agent")
 
 REASON_INVALID_RESPONSE = "INVALID_AI_RESPONSE"  # Gemini answered, but not with a valid decision
 
@@ -99,12 +110,28 @@ class AgentResult(BaseModel):
         default=None,
         description="e.g. GEMINI_HTTP_500, GEMINI_HTTP_503, GEMINI_TIMEOUT, INVALID_AI_RESPONSE, AI_CONFIGURATION_ERROR",
     )
+    failure_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "AI_REQUEST_FAILED | TIMEOUT | QUOTA_ERROR | SERVER_ERROR | MODEL_UNAVAILABLE (the call failed) or "
+            "MALFORMED_RESPONSE | INVALID_OUTPUT (Gemini answered, but not with a usable decision). None when ok."
+        ),
+    )
     http_status: Optional[int] = Field(default=None, description="Upstream Gemini HTTP status, when there was one")
     attempts: Optional[int] = Field(default=None, description="How many Gemini attempts were made")
 
 
 class ResponseError(ValueError):
-    """Gemini's reply could not be turned into a valid decision."""
+    """Gemini's reply could not be turned into a valid decision. By default the JSON itself was fine but the content
+    is not acceptable (schema or world check): failure type INVALID_OUTPUT."""
+
+    failure_type = INVALID_OUTPUT
+
+
+class MalformedResponseError(ResponseError):
+    """Gemini's reply is not usable JSON at all (empty, not JSON, not an object): failure type MALFORMED_RESPONSE."""
+
+    failure_type = MALFORMED_RESPONSE
 
 
 # --- Agent identity --------------------------------------------------------------------
@@ -365,14 +392,14 @@ def parse_decision(raw: Any, world: Any, profile: AgentProfile) -> CountryDecisi
     """
     text = raw.strip() if isinstance(raw, str) else ""
     if not text:
-        raise ResponseError("Gemini returned an empty response")
+        raise MalformedResponseError("Gemini returned an empty response")
 
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ResponseError(f"Response is not valid JSON ({exc.msg} at position {exc.pos})") from None
+        raise MalformedResponseError(f"Response is not valid JSON ({exc.msg} at position {exc.pos})") from None
     if not isinstance(data, dict):
-        raise ResponseError("Response JSON must be an object with the decision fields")
+        raise MalformedResponseError("Response JSON must be an object with the decision fields")
 
     try:
         decision = CountryDecision.model_validate(data)
@@ -428,37 +455,46 @@ class CountryAgent:
         system_prompt = self.build_system_prompt()
         user_prompt = self.build_user_prompt(situation, world)
 
+        started = time.monotonic()
         try:
             raw = self._llm(system_prompt, user_prompt)
-        except CheckError as err:  # Phase 1 error: clear message, no key
-            reason = getattr(err, "reason", None) or (REASON_CONFIG if err.exit_code == EXIT_CONFIG else REASON_GENERIC)
-            return AgentResult(
-                ok=False,
-                error_code="gemini_error",
-                error=err.message,
-                failure_reason=reason,
-                http_status=getattr(err, "http_status", None),
-                attempts=getattr(err, "attempts", None),
-            )
+        except CheckError as err:  # Phase 1 error: clear message, no key (already logged by the Gemini client)
+            return AgentResult(ok=False, error_code="gemini_error", error=err.message, **failure_fields(err))
         except Exception as exc:  # type only: never echo a message that might hold sensitive text
+            logger.error(
+                "ai call failed agent=%s model=%s error_type=%s failure_type=%s elapsed_ms=%d",
+                self.profile.name, safe_model_name() or "-", type(exc).__name__, AI_REQUEST_FAILED,
+                int((time.monotonic() - started) * 1000),
+            )
             return AgentResult(
                 ok=False,
                 error_code="gemini_error",
                 error=f"Unexpected error calling Gemini ({type(exc).__name__})",
                 failure_reason=REASON_UNEXPECTED,
+                failure_type=AI_REQUEST_FAILED,
             )
 
         try:
             decision = parse_decision(raw, world, self.profile)
         except ResponseError as err:
             echo = raw[:MAX_RAW_ECHO_CHARS] if isinstance(raw, str) else repr(raw)[:MAX_RAW_ECHO_CHARS]
+            logger.warning(
+                "ai output rejected agent=%s model=%s failure_type=%s reason=%s elapsed_ms=%d",
+                self.profile.name, safe_model_name() or "-", err.failure_type, REASON_INVALID_RESPONSE,
+                int((time.monotonic() - started) * 1000),
+            )
             return AgentResult(
                 ok=False,
                 error_code="invalid_response",
                 error=str(err),
                 raw_response=echo,
                 failure_reason=REASON_INVALID_RESPONSE,
+                failure_type=err.failure_type,
             )
+        logger.info(
+            "ai decision ok agent=%s model=%s decision=%s elapsed_ms=%d",
+            self.profile.name, safe_model_name() or "-", decision.decision.value, int((time.monotonic() - started) * 1000),
+        )
         return AgentResult(ok=True, decision=decision)
 
     @staticmethod

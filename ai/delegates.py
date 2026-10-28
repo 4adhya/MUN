@@ -11,7 +11,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai.check_gemini import CheckError
 from ai.country_agent import COUNTRY_PROFILES
-from ai.gemini_client import REASON_CONFIG, GeminiRequestError, generate_json_text
+from ai.country_agent import MalformedResponseError
+from ai.gemini_client import (
+    AI_REQUEST_FAILED,
+    INVALID_OUTPUT,
+    MALFORMED_RESPONSE,
+    REASON_CONFIG,
+    GeminiRequestError,
+    generate_json_text,
+)
 from backend.conference_service import conference_service
 from backend.mun import (
     ConferencePhase,
@@ -405,16 +413,27 @@ def _failure_detail(kind: DelegateKind, exc: Exception) -> dict[str, Any]:
     if isinstance(exc, GeminiRequestError):
         detail.update(
             reason=exc.reason,
+            failure_type=exc.failure_type,
             upstream_http_status=exc.http_status,
             attempts=exc.attempts,
             error=f"AI request failed ({exc.reason}).",
         )
     elif isinstance(exc, CheckError):
-        detail.update(reason=REASON_CONFIG, error=exc.message)
+        detail.update(reason=REASON_CONFIG, failure_type=AI_REQUEST_FAILED, error=exc.message)
     elif isinstance(exc, ValueError):  # json.JSONDecodeError, pydantic ValidationError, our own output checks
-        detail.update(reason="AI_INVALID_RESPONSE", error=f"The AI returned an invalid response ({type(exc).__name__}).")
+        # Not JSON / not an object / empty -> MALFORMED_RESPONSE; valid JSON that breaks the schema or a check -> INVALID_OUTPUT.
+        malformed = isinstance(exc, (json.JSONDecodeError, MalformedResponseError))
+        detail.update(
+            reason="AI_INVALID_RESPONSE",
+            failure_type=MALFORMED_RESPONSE if malformed else INVALID_OUTPUT,
+            error=f"The AI returned an invalid response ({type(exc).__name__}).",
+        )
     else:
-        detail.update(reason="GEMINI_UNEXPECTED_ERROR", error=f"Unexpected error generating the response ({type(exc).__name__}).")
+        detail.update(
+            reason="GEMINI_UNEXPECTED_ERROR",
+            failure_type=AI_REQUEST_FAILED,
+            error=f"Unexpected error generating the response ({type(exc).__name__}).",
+        )
     return detail
 
 
@@ -568,9 +587,11 @@ def generate_delegate(
         )
 
         if not isinstance(raw, str) or not raw.strip():
-            raise ValueError("AI returned an empty response")
+            raise MalformedResponseError("AI returned an empty response")
 
         parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            raise MalformedResponseError("AI response JSON must be an object")
         output = OUTPUT_MODELS[kind].model_validate(parsed)
 
 
@@ -643,10 +664,11 @@ def generate_delegate(
         # Log the classification only: provider exception text may contain private data, so it is never logged
         # (no traceback either) and never returned.
         logger.error(
-            "delegate generation failed kind=%s error_type=%s reason=%s upstream_http_status=%s",
+            "delegate generation failed kind=%s error_type=%s reason=%s failure_type=%s upstream_http_status=%s",
             kind.value,
             type(exc).__name__,
             detail.get("reason", "-"),
+            detail.get("failure_type", "-"),
             detail.get("upstream_http_status", "-"),
         )
 
