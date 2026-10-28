@@ -226,6 +226,7 @@ const toCountryId = (name) =>
   name.trim().toLowerCase().replace(/\s+/g, "-");
 
 const requestAIProposal = async () => {
+  if (aiLoading) return; // a proposal is already in flight; never fire a duplicate /ai/propose
   setAiLoading(true);
   setAiElapsed(0);
   setAiError("");

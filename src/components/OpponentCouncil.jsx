@@ -133,6 +133,7 @@ export default function OpponentCouncil({ country, onActionComplete }) {
 }, [selectedCountryId]);
 
   async function runCouncil() {
+    if (loading) return; // a council run is already in flight; never start a second concurrent batch
     if (!situation.trim()) {
       setError("Describe the crisis before starting the council.");
       return;
@@ -153,49 +154,47 @@ export default function OpponentCouncil({ country, onActionComplete }) {
 
     setProposals(initial);
 
-    // Run two opponents at a time, leaving a backend slot for the advisor.
-    const queue = [...opponents];
-    const worker = async () => {
-      while (queue.length) {
-        const opponent = queue.shift();
-        try {
-          const response = await proposeAI(opponent.id, situation.trim());
-          const decision = getDecision(response);
+    // Request proposals ONE country at a time: at most one /ai/propose is ever in flight, which
+    // avoids the burst of simultaneous calls that was driving Gemini into HTTP 429 (quota). Each
+    // card still updates as its own proposal arrives. Error handling is unchanged: a 429/503/504 or
+    // a missing/invalid decision stays a genuine AI failure and is never turned into a fake NO_ACTION.
+    for (const opponent of opponents) {
+      try {
+        const response = await proposeAI(opponent.id, situation.trim());
+        const decision = getDecision(response);
 
-          // Never show "No action needed" for an answer that is not a real decision.
-          if (!decision || !VALID_ACTIONS.includes(getDecisionType(decision))) {
-            const failure = new Error(
-              "The server returned no usable decision. Nothing was decided for this country."
-            );
-            failure.failureType = response?.failure_type || "INVALID_OUTPUT";
-            throw failure;
-          }
-
-          setProposals((previous) => ({
-            ...previous,
-            [opponent.id]: {
-              status: "ready",
-              country: opponent,
-              response,
-              decision,
-              source: response?.source || "unknown",
-              usedFallback: Boolean(response?.used_fallback),
-            },
-          }));
-        } catch (err) {
-          setProposals((previous) => ({
-            ...previous,
-            [opponent.id]: {
-              status: "error",
-              country: opponent,
-              error: err?.message || "The country agent could not respond.",
-              failureType: err?.failureType || "AI_REQUEST_FAILED",
-            },
-          }));
+        // Never show "No action needed" for an answer that is not a real decision.
+        if (!decision || !VALID_ACTIONS.includes(getDecisionType(decision))) {
+          const failure = new Error(
+            "The server returned no usable decision. Nothing was decided for this country."
+          );
+          failure.failureType = response?.failure_type || "INVALID_OUTPUT";
+          throw failure;
         }
+
+        setProposals((previous) => ({
+          ...previous,
+          [opponent.id]: {
+            status: "ready",
+            country: opponent,
+            response,
+            decision,
+            source: response?.source || "unknown",
+            usedFallback: Boolean(response?.used_fallback),
+          },
+        }));
+      } catch (err) {
+        setProposals((previous) => ({
+          ...previous,
+          [opponent.id]: {
+            status: "error",
+            country: opponent,
+            error: err?.message || "The country agent could not respond.",
+            failureType: err?.failureType || "AI_REQUEST_FAILED",
+          },
+        }));
       }
-    };
-    await Promise.all([worker(), worker()]);
+    }
 
     setLoading(false);
   }
