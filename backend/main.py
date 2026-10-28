@@ -625,7 +625,9 @@ def resolve_ai_profile(world, country_id: str) -> AgentProfile:
     """The AI identity for any identifier the client sends ("India", "india", "IND", "afghanistan", ...).
 
     Resolved through the country dataset; the simulated world is only needed for the live state briefing.
-    Raises HTTPException 404 for an unknown country and 400 for a simulated country without an AI profile.
+    Every registered country is playable: a country with a hand-written profile uses it, and any other
+    country (featured or not) falls back to a profile derived from its dataset record.
+    Raises HTTPException 404 only for an identifier that is not a country at all.
     """
     country = find_world_country(world, country_id)
     record = resolve_country(country_id)
@@ -638,9 +640,12 @@ def resolve_ai_profile(world, country_id: str) -> AgentProfile:
         profile = COUNTRY_PROFILES.get(country.id)
         if profile is None:
             profile = COUNTRY_PROFILES.get(country.id.replace("_", "-"))
-        if profile is None:
-            raise HTTPException(status_code=400, detail=f"No AI profile configured for {country.name}")
-        return profile
+        if profile is not None:
+            return profile
+        # A simulated country without a hand-written profile: derive one so it is still playable.
+        if record is not None:
+            return profile_from_record(record)
+        raise HTTPException(status_code=404, detail=f"Country '{country_id}' not found")
 
     # A real country that is not simulated: derive its profile from the dataset record.
     return profile_from_record(record)

@@ -221,10 +221,16 @@ def test_reset_restores_original_trade_state():
     assert_trade_consistent(world())
 
 
+# The world now holds every registered country, but all trade routes live between the featured
+# countries, so these "every pair" stress tests iterate the featured set: sanctioning every featured
+# pair still cuts every route, and the non-featured countries start (and stay) with no routes.
+FEATURED_IDS = ["india", "united-states", "china", "france", "united-kingdom", "russia", "japan", "brazil"]
+
+
 # 8. values never go negative / out of range ----------------------------------------------
 def test_trade_values_never_negative_under_many_actions():
     reset()
-    ids = [c["id"] for c in world()["countries"]]
+    ids = FEATURED_IDS
     for a in ids:
         for b in ids:
             if a == b:
@@ -234,14 +240,14 @@ def test_trade_values_never_negative_under_many_actions():
             act("aid", a, b, amount=5)
             assert_trade_consistent(world())
     assert validate_world(simulation.world) == []
-    # every pair ended up sanctioned both ways, so no route is left flowing
+    # every featured pair ended up sanctioned both ways, so no route is left flowing
     assert all(not r["active"] for r in world()["trade_routes"])
     assert all(c["trade_partners"] == [] for c in world()["countries"])
 
 
 def test_repeated_alliances_never_exceed_efficiency_ceiling():
     reset()
-    ids = [c["id"] for c in world()["countries"]]
+    ids = FEATURED_IDS
     for a in ids:
         for b in ids:
             if a != b:

@@ -102,6 +102,13 @@ export const getHealth = () => request("/health");
 
 export const getWorld = () => request("/world");
 
+// The authoritative list of playable countries: every country the backend seeds into the world.
+// Used by the country selector so it is never a hardcoded subset.
+export const getWorldCountries = async () => {
+  const world = await getWorld();
+  return Array.isArray(world?.countries) ? world.countries : [];
+};
+
 export const getCountry = (id) =>
   request(`/countries/${encodeURIComponent(id)}`);
 

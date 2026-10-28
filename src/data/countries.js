@@ -64,13 +64,65 @@ export function normalizeCountry(country) {
   };
 }
 
-// Country profiles are loaded locally; no API request is needed.
+import { getWorldCountries } from "../api/client.js";
+
+// Rich display facts from the world-countries dataset, keyed by ISO alpha-2 code for merging
+// with the backend's authoritative country list.
 const allProfiles = countriesData
   .filter((country) => country.cca2 && country.name?.common)
   .map(normalizeCountry)
   .sort((a, b) => a.name.localeCompare(b.name));
 
+const profilesByCode = new Map(
+  allProfiles.map((profile) => [String(profile.code).toUpperCase(), profile])
+);
+
+// Turn a backend Country (from GET /world) into the profile shape the UI expects, enriched with
+// the local dataset facts (capital, population, currency, ...) when available.
+function profileFromBackendCountry(country) {
+  const code = String(country.country_code || "").toUpperCase();
+  const dataset = code ? profilesByCode.get(code) : null;
+  if (dataset) {
+    // Prefer the dataset's richer display facts; keep the backend id/name as the source of truth.
+    return { ...dataset, id: country.id, name: country.name };
+  }
+  return {
+    id: country.id,
+    code,
+    iso3: "",
+    name: country.name,
+    officialName: country.name,
+    flag: country.flag || "🌐",
+    flagEmoji: country.flag || "🌐",
+    flagImage: "",
+    capital: "Not available",
+    population: null,
+    populationLabel: "Not available",
+    region: "Not available",
+    subregion: "Not available",
+    area: null,
+    areaLabel: "Not available",
+    currencies: {},
+    currencyLabel: "Not available",
+    languages: {},
+    languageLabel: "Not available",
+  };
+}
+
+// The selector's countries come from the BACKEND (the single source of truth for who is playable),
+// enriched with local dataset facts. If the backend is unreachable, fall back to the full local
+// dataset so the UI still works offline.
 export async function getAllCountryProfiles() {
+  try {
+    const backendCountries = await getWorldCountries();
+    if (Array.isArray(backendCountries) && backendCountries.length > 0) {
+      return backendCountries
+        .map(profileFromBackendCountry)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+  } catch {
+    // Backend unavailable — fall back to the full local dataset below.
+  }
   return allProfiles;
 }
 

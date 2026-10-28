@@ -141,14 +141,16 @@ def test_simulated_country_keeps_its_hand_written_profile_and_live_state(fake_ll
 
 
 @needs_dataset
-def test_non_simulated_country_gets_dataset_facts_and_no_invented_numbers(fake_llm):
+def test_registered_country_is_seeded_and_playable_with_dataset_identity(fake_llm):
+    # Every registered country is now seeded into the world with safe defaults, so a non-featured
+    # country such as Afghanistan is a full participant: it has live simulated state AND keeps its
+    # dataset-derived identity (region/capital/ISO codes in the agent's background).
     assert propose("afghanistan").status_code == 200
     assert fake_llm["profile"].country_id == "afghanistan"
+    assert "Capital: Kabul" in fake_llm["profile"].background
     user = fake_llm["user"]
-    assert "AFGHANISTAN: NOT A SIMULATED PARTICIPANT" in user
-    assert "Capital: Kabul" in user
-    assert "CURRENT STATE OF" not in user
-    assert "- India: GDP" in user  # simulated countries remain valid targets
+    assert "=== CURRENT STATE OF AFGHANISTAN ===" in user  # it is a simulated participant now
+    assert "- India: GDP" in user  # other simulated countries remain valid targets
 
 
 @needs_dataset

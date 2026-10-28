@@ -49,14 +49,21 @@ def test_world_contains_everything_the_frontend_needs():
     json.dumps(w)  # JSON-serializable
     assert set(w) == {"turn", "countries", "trade_routes", "events"}
     assert w["turn"] == 0 and w["events"] == []
-    assert len(w["countries"]) == 8
+    # Every registered country is playable, so the world holds the whole registry (far more than the
+    # original 8 featured countries), including the featured ones.
     ids = [c["id"] for c in w["countries"]]
-    assert len(set(ids)) == 8
+    assert len(set(ids)) == len(ids)
+    assert len(ids) >= 8
+    assert {"india", "united-states", "china"} <= set(ids)
+    id_set = set(ids)
     for c in w["countries"]:
         assert COUNTRY_FIELDS <= set(c)
         assert c["name"] and isinstance(c["gdp"], (int, float)) and 0 <= c["stability"] <= 100
         assert isinstance(c["resources"], dict) and c["resources"]
-        assert set(c["relationships"]) == set(ids) - {c["id"]}
+        # Relationships are sparse (default 0 for any unlisted pair); every listed partner is a real,
+        # other country and the score is in range.
+        assert all(other in id_set and other != c["id"] for other in c["relationships"])
+        assert all(-100 <= score <= 100 for score in c["relationships"].values())
         assert c["sanctions"] == [] and isinstance(c["alliances"], list)  # the starting world has no sanctions
     assert len(w["trade_routes"]) == 16
     for t in w["trade_routes"]:

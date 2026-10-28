@@ -70,7 +70,8 @@ def test_world_state_rejects_out_of_range_metric():
 def test_existing_world_fields_still_work():
     w = simulation.world
     assert w.turn == 0 and w.events == []
-    assert len(w.countries) == 8 and len(w.trade_routes) == 16
+    # Every registered country is seeded now, so there are many more than the 8 featured ones.
+    assert len(w.countries) >= 8 and len(w.trade_routes) == 16
     c = next(c for c in w.countries if c.id == "india")
     assert c.gdp > 0 and 0 <= c.stability <= 100 and c.resources and c.trade_partners
     assert c.alliances == [] and c.sanctions == [] and c.relationships

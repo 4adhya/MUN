@@ -3,15 +3,29 @@
 Country names and IDs correspond to real countries. GDP, stability, resources,
 relationships, and trade-route values are illustrative simulation values, not
 live economic data or claims about current diplomatic relations.
+
+Every country known to the backend country registry (``country_registry``,
+backed by the ``world-countries`` dataset) is seeded into the world so that it
+is playable: it can be selected, proposed for by the AI, sanctioned, allied,
+aided and traded with. A small set of "featured" countries carry hand-tuned
+economic, resource and relationship data; every other registered country is
+initialised with safe, neutral defaults. The registry is therefore the ONE
+source of truth for which countries exist.
 """
 from __future__ import annotations
 
 from itertools import combinations
 
+from .country_registry import get_registry
 from .models import Country, TradeRoute
 from .rules import (
+    RESOURCE_MAX,
+    RESOURCE_MIN,
     SHARED_ALLIANCE_BONUS,
+    STABILITY_MAX,
+    STABILITY_MIN,
     TRADE_ROUTE_BONUS_PER_10_VOLUME,
+    clamp,
     clamp_relationship,
 )
 
@@ -176,8 +190,24 @@ def _initial_relationships() -> dict[str, dict[str, int]]:
     return scores
 
 
-def build_countries() -> list[Country]:
-    """Create countries and derive their initial trade-partner lists."""
+# Safe, neutral defaults for a registered country that has no hand-tuned entry
+# in _RAW_COUNTRIES. These are deliberately middle-of-the-road illustrative
+# values so that every country is immediately playable (can be sanctioned,
+# allied, aided and traded with) without privileging it over the featured set.
+DEFAULT_GDP = 100.0  # billions of illustrative simulation dollars
+DEFAULT_STABILITY = 60
+DEFAULT_RESOURCES: dict[str, int] = {"food": 50, "tech": 50, "minerals": 50, "energy": 50}
+
+
+def _default_resources() -> dict[str, int]:
+    return {
+        resource: clamp(value, RESOURCE_MIN, RESOURCE_MAX)
+        for resource, value in DEFAULT_RESOURCES.items()
+    }
+
+
+def _featured_countries() -> list[Country]:
+    """The hand-tuned countries with their curated relationships, trade and alliances."""
     relationships = _initial_relationships()
     partners: dict[str, list[str]] = {
         country["id"]: [] for country in _RAW_COUNTRIES
@@ -207,5 +237,56 @@ def build_countries() -> list[Country]:
                 relationships=relationships[country_id],
             )
         )
+
+    return countries
+
+
+def _default_country_from_record(record) -> Country:
+    """A registered (non-featured) country, seeded with safe neutral defaults.
+
+    It starts with no trade routes, no alliances, no sanctions and an empty
+    (all-zero) relationship map, so it is consistent on its own and every
+    action (sanction/alliance/aid) and the AI proposal path work for it.
+    """
+    return Country(
+        id=record.slug,
+        country_code=record.cca2 if len(record.cca2) == 2 else None,
+        name=record.name,
+        flag=flag_emoji(record.cca2) if len(record.cca2) == 2 else None,
+        gdp=DEFAULT_GDP,
+        stability=clamp(DEFAULT_STABILITY, STABILITY_MIN, STABILITY_MAX),
+        resources=_default_resources(),
+        trade_partners=[],
+        alliances=[],
+        sanctions=[],
+        relationships={},
+    )
+
+
+def build_countries() -> list[Country]:
+    """Create every registered country, derive featured trade-partner lists.
+
+    The featured countries keep their hand-tuned data; every other country the
+    registry knows (the ``world-countries`` dataset) is appended with safe
+    defaults so that the whole world is playable. The registry is the single
+    source of truth; if it is unavailable only the featured set is built.
+    """
+    countries: list[Country] = _featured_countries()
+
+    taken_ids = {country.id for country in countries}
+    taken_codes = {country.country_code for country in countries if country.country_code}
+
+    registry = get_registry()
+    # Deterministic order (by slug) so the world is stable across runs.
+    for record in sorted(registry.records, key=lambda r: r.slug):
+        if record.slug in taken_ids:
+            continue  # a featured country already occupies this slug (e.g. india)
+        if record.cca2 in taken_codes:
+            continue  # or this ISO code (defensive: codes are unique in the dataset)
+        country = _default_country_from_record(record)
+        countries.append(country)
+        taken_ids.add(country.id)
+        if country.country_code:
+            taken_codes.add(country.country_code)
 
     return countries

@@ -15,7 +15,12 @@ from backend.simulation import create_initial_world, simulation
 client = TestClient(app)
 safe_client = TestClient(app, raise_server_exceptions=False)  # returns 500s instead of raising
 
-IDS = [c.id for c in create_initial_world().countries]  # the 8 real countries from countries.py
+# The world now holds every registered country; the fuzz test uses a small fixed set of featured
+# countries so that collisions (duplicate sanction / existing alliance -> 409) still occur reliably
+# and every outcome is exercised. Any registered country would be valid here.
+ALL_IDS = [c.id for c in create_initial_world().countries]
+IDS = ["india", "united-states", "china", "france", "russia", "japan"]
+assert set(IDS) <= set(ALL_IDS)
 
 
 def snapshot() -> dict:

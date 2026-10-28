@@ -17,13 +17,16 @@ def test_world():
     w = client.get("/world").json()
     assert w["turn"] == 0
     assert w["events"] == []
-    assert len(w["countries"]) == 8
+    # Every registered country is playable, so the world holds more than the original 8 featured ones.
+    assert len(w["countries"]) >= 8
     assert len(w["trade_routes"]) > 0
     required = {"id", "name", "gdp", "stability", "resources",
                 "trade_partners", "alliances", "sanctions", "relationships"}
+    ids = {c["id"] for c in w["countries"]}
     for c in w["countries"]:
         assert required <= set(c), c["id"]
-        assert len(c["relationships"]) == 7  # every other country
+        # Relationships are sparse (default 0 for unlisted pairs); each listed one is another real country.
+        assert all(other in ids and other != c["id"] for other in c["relationships"]), c["id"]
 
 
 def test_country():

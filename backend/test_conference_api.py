@@ -240,10 +240,17 @@ def test_assignment_is_repeatable_across_conferences():
     assert results[0] == results[1]
 
 
-def test_no_duplicate_countries_when_every_country_is_used():
-    body = client.post(f"/conference/{make_conference(delegates=len(WORLD_ORDER))}/start").json()
+def test_no_duplicate_countries_when_a_full_committee_is_seated():
+    # The world now has far more countries than any committee seats, so fill the committee to its
+    # delegate cap and confirm every delegate still gets a distinct country.
+    from backend.mun import get_committee_config
+
+    cap = get_committee_config("UNSC").max_delegates
+    body = client.post(f"/conference/{make_conference(delegates=cap)}/start").json()
     codes = [p["country_code"] for p in body["participants"]]
-    assert len(codes) == len(set(codes)) == len(WORLD_ORDER)
+    assert len(codes) == cap
+    assert len(set(codes)) == cap  # no duplicates
+    assert all(code for code in codes)  # everyone got a real seat
 
 
 def test_observers_get_no_country():
@@ -258,14 +265,25 @@ def test_observers_get_no_country():
     assert len(body["assigned_countries"]) == 1
 
 
-def test_more_delegates_than_countries_is_a_validation_error_and_changes_nothing():
-    conference_id = make_conference(delegates=len(WORLD_ORDER) + 1)  # UNSC allows 15, world has 8
-    response = client.post(f"/conference/{conference_id}/start")
-    assert response.status_code == 422
-    assert "No available country" in response.json()["detail"]
-    body = client.get(f"/conference/{conference_id}").json()
-    assert body["status"] == "WAITING" and body["current_phase"] == "LOBBY"
-    assert body["world"] is None and all(p["country_code"] is None for p in body["participants"])
+def test_the_world_has_more_countries_than_any_committee_seats():
+    # Because every registered country is now playable, seating can never run out within a
+    # committee's delegate cap. The "no available country" guard is still exercised directly below.
+    from backend.mun import get_committee_config
+
+    assert len(WORLD_ORDER) > get_committee_config("UNSC").max_delegates
+    assert len(WORLD_ORDER) > get_committee_config("GLOBAL_CYBERSECURITY").max_delegates
+
+
+def test_assign_countries_rejects_when_countries_run_out():
+    # Direct unit coverage of the "No available country" guard (unreachable through normal joins now
+    # that the world is registry-sized, but still valid logic).
+    one_country = build_countries()[:1]  # only a single seat available
+    delegates = [
+        Participant(name="A", role=ParticipantRole.PARTICIPANT, conference_id="c"),
+        Participant(name="B", role=ParticipantRole.PARTICIPANT, conference_id="c"),
+    ]
+    with pytest.raises(InvalidRequestError, match="No available country"):
+        assign_countries(delegates, one_country)
 
 
 def test_assign_countries_rejects_duplicate_assignment():
@@ -382,11 +400,13 @@ def test_unknown_country_is_rejected_and_nobody_joins(country):
     assert client.get(f"/conference/{conference_id}").json()["participant_count"] == 0
 
 
-def test_a_real_country_that_is_not_simulated_is_rejected():
+def test_a_registered_non_featured_country_can_be_seated():
+    # Every registered country is now playable, so a delegate may take a seat as Afghanistan.
     conference_id = make_conference()
-    response = join(conference_id, country="afghanistan")  # in the dataset (when installed), not seated in this world
-    assert response.status_code == 422
-    assert client.get(f"/conference/{conference_id}").json()["participant_count"] == 0
+    response = join(conference_id, country="afghanistan")
+    assert response.status_code == 201, response.text
+    assert response.json()["country_code"] == "AF"
+    assert client.get(f"/conference/{conference_id}").json()["participant_count"] == 1
 
 
 @pytest.mark.parametrize("role", ["GUEST", "JURY"])
