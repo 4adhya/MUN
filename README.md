@@ -2,6 +2,14 @@
 
 **Diplomacy in Action | Powered by Google Gemma 4**
 
+
+## 🚀 Live Preview
+
+- **Backend API:** [https://mun-1-r0va.onrender.com](https://mun-1-r0va.onrender.com)
+- **API documentation:** [https://mun-1-r0va.onrender.com/docs](https://mun-1-r0va.onrender.com/docs)
+- **Backend health check:** [https://mun-1-r0va.onrender.com/health](https://mun-1-r0va.onrender.com/health)
+
+
 POLITICA is an interactive geopolitical and Model United Nations simulation where players represent countries, respond to international crises, and make strategic diplomatic decisions. The simulation combines a visual country-selection experience, evolving world conditions, economic relationships, and AI-assisted decision-making.
 
 Built for the **Google Gemma Challenge**, the project integrates Gemma 4 through the Gemini API to generate structured diplomatic proposals based on the current simulation state.
