@@ -1,0 +1,7 @@
+# Runtime dependencies for the MUN FastAPI backend.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+sqlalchemy>=2.0
+google-genai>=1.0
+python-dotenv>=1.0
